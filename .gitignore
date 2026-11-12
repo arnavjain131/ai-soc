@@ -1,0 +1,17 @@
+tmp/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.pytest_cache/
+.coverage
+coverage/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.vercel/

@@ -1,0 +1,23 @@
+# Reference blueprint. Apply migrations and review service plan before deploying.
+services:
+  - type: web
+    name: ai-soc-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
