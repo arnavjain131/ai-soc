@@ -1,9 +1,12 @@
 # Current checkpoint
 
-Updated 12 November 2026. This file supersedes older planning statements that Supabase is not connected. Credentials remain in ignored local environment files; do not print, request in chat, overwrite, or commit them.
+Updated 15 November 2026 after the owner verified live SSH telemetry. Keep credentials in ignored local configuration.
 
 ## Infrastructure
 
+- Frontend deployed: https://ai-soc-frontend-gamma.vercel.app/.
+- API deployed: https://ai-soc-api.onrender.com/.
+- Owner confirmed hosted sign-in and access to the existing private incident work.
 - Supabase project: `ai-soc-dev`, Mumbai region.
 - Project URL: `https://irunqxzbxqqcuclkhpcj.supabase.co`.
 - PostgreSQL: Session Pooler, psycopg/SQLAlchemy, `sslmode=require`.
@@ -62,4 +65,14 @@ Do not start duplicates if the ports are already serving the application. Start 
 
 ## Following milestones
 
-The source was pushed successfully to https://github.com/arnavjain131/ai-soc on branch `codex/initial-soc`. The initial implementation commit is `b1bee68`. Source credential/exclusion checks passed before publication; local environment files and databases were excluded. Select `codex/initial-soc` in hosting integrations. Next: deploy the frontend shell to Vercel to obtain its exact HTTPS origin, deploy the API to Render, configure hosted URLs/secrets, and verify deployed private access. See DEPLOYMENT.md for the concrete sequence. Public demo plus private analyst access remains the agreed model. This hosted version will still be an early development release. Real telemetry adapters, broader rules/correlation, RAG/AI, and ML scope are later implementation work. Budget and deadline remain unspecified.
+The source was pushed successfully to https://github.com/arnavjain131/ai-soc on branch `codex/initial-soc`. The initial implementation commit is `b1bee68`; publication checkpoint commit is `bb3b9df`. Source credential/exclusion checks passed before publication; local environment files and databases were excluded. Both frontend and API are deployed. Public demo plus private analyst access remains the agreed model. This is an early development release; budget and deadline remain unspecified.
+
+API `/health/live` and `/health/ready` returned 200, anonymous `/api/incidents` returned 401, and CORS and the authenticated-request preflight allowed the Vercel origin. The owner confirmed hosted login and subsequently verified live ingestion. Persistence across a hosted redeploy still needs verification.
+
+Next implementation milestone: add Suricata EVE JSON normalization and verify network event delivery. Broader detection, correlation, RAG/AI, and ML scope follow.
+
+## Completed: hosted SSH telemetry
+
+The owner confirmed that `AI-SOC-Ubuntu` runs Ubuntu Server 24.04.5 LTS with 3 GB RAM, 2 CPUs, and a 25 GB dynamic disk. VirtualBox NAT forwards `127.0.0.1:2222` to guest SSH port 22. The guest clock is synchronized in Asia/Kolkata.
+
+The owner installed `ai-soc-ssh.service`, transferred the journal cursor fix to Ubuntu, and verified API acknowledgements from Render. The deployed SOC opened **Possible brute force against soc-lab-test** with five linked `LOGIN_FAILED` records from `10.0.2.2` to `10.0.2.15:22`. The earlier synthetic `demo-admin` incident stayed separate. At verification the dashboard showed 18 events, 2 alerts, and 2 open incidents.

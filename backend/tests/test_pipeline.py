@@ -39,6 +39,28 @@ def ingest(client, payload):
     return client.post('/api/events/batch', json=payload, headers={'X-Source-Token': 'test-source'})
 
 
+def test_network_flow_is_persisted_and_visible_only_to_members(environment):
+    app, client, owner, outsider, _ = environment
+    flow = {
+        'external_event_id': 'flow-one', 'event_type': 'NETWORK_FLOW',
+        'event_time': '2025-11-15T12:00:00.123456Z', 'protocol': 'TCP',
+        'source_ip': '192.0.2.2', 'source_port': 51234,
+        'destination_ip': '198.51.100.15', 'destination_port': 22,
+        'raw_data': {'provenance': 'suricata_eve'},
+    }
+    assert client.get('/api/events/network').status_code == 401
+    assert ingest(client, {'events': [flow]}).json() == {'accepted': 1, 'duplicates': 0}
+    assert ingest(client, {'events': [flow]}).json() == {'accepted': 0, 'duplicates': 1}
+    app.dependency_overrides[verified_user] = lambda: outsider
+    assert client.get('/api/events/network').json() == []
+    app.dependency_overrides[verified_user] = lambda: owner
+    record, = client.get('/api/events/network').json()
+    assert record['event_time'] == flow['event_time']
+    for field in ('source_ip', 'source_port', 'destination_ip', 'destination_port', 'protocol'):
+        assert record[field] == flow[field]
+    assert client.get('/api/incidents').json() == []
+
+
 def test_pipeline_evidence_and_retry_are_idempotent(environment):
     app, client, owner, *_ = environment
     app.dependency_overrides[verified_user] = lambda: owner

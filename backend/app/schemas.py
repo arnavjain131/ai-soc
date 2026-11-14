@@ -1,20 +1,18 @@
 import json
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class SecurityEvent(BaseModel):
+class EventFields(BaseModel):
     model_config = ConfigDict(extra='forbid')
     external_event_id: str = Field(min_length=1, max_length=128)
     event_time: datetime
-    event_type: Literal['LOGIN_FAILED', 'LOGIN_SUCCEEDED']
     source_ip: str
     destination_ip: str
     destination_port: int = Field(ge=1, le=65535)
-    username: str = Field(min_length=1, max_length=128)
     raw_data: dict = Field(default_factory=dict)
 
     @field_validator('event_time')
@@ -39,9 +37,27 @@ class SecurityEvent(BaseModel):
         return value
 
 
+class SecurityEvent(EventFields):
+    event_type: Literal['LOGIN_FAILED', 'LOGIN_SUCCEEDED']
+    username: str = Field(min_length=1, max_length=128)
+
+
+class NetworkFlow(EventFields):
+    event_type: Literal['NETWORK_FLOW']
+    source_port: int = Field(strict=True, ge=1, le=65535)
+    protocol: Literal['TCP', 'UDP']
+
+    @field_validator('raw_data')
+    @classmethod
+    def collector_metadata_only(cls, value):
+        if value != {'provenance': 'suricata_eve'}:
+            raise ValueError('Only Suricata provenance metadata is accepted')
+        return value
+
+
 class EventBatch(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    events: list[SecurityEvent] = Field(min_length=1, max_length=100)
+    events: list[Annotated[SecurityEvent | NetworkFlow, Field(discriminator='event_type')]] = Field(min_length=1, max_length=100)
 
 
 class IncidentUpdate(BaseModel):

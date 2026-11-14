@@ -1,0 +1,23 @@
+[Unit]
+Description=AI SOC OpenSSH authentication collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/ai-soc/ssh_journal.py
+DynamicUser=yes
+SupplementaryGroups=systemd-journal
+StateDirectory=ai-soc-ssh
+StateDirectoryMode=0700
+EnvironmentFile=/etc/ai-soc/ssh-collector.conf
+LoadCredential=source-token:/etc/ai-soc/source-token
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

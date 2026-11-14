@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Activity, ArrowDownRight, ArrowRight, Check, ChevronRight, Clock3, Database, Eye, FileSearch, LayoutDashboard, LockKeyhole, LogOut, Radio, RefreshCw, Search, Shield, ShieldAlert, Terminal, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { api, supabase } from './api'
+import { NetworkEvents } from './NetworkEvents'
 import { demoIncidents, demoSources, demoStats } from './demo'
 import type { Detail, Incident, IncidentStatus, Source, Stats } from './types'
 import './styles.css'
@@ -21,7 +22,8 @@ function App() {
   const [stats, setStats] = useState<Stats>(demoStats), [sources, setSources] = useState<Source[]>(demoSources)
   const [detail, setDetail] = useState<Detail | null>(null)
   const [search, setSearch] = useState(''), [status, setStatus] = useState('all')
-  const [tab, setTab] = useState<'overview' | 'incidents' | 'sources'>('overview')
+  const [tab, setTab] = useState<'overview' | 'incidents' | 'sources' | 'network'>('overview')
+  const [networkRefresh, setNetworkRefresh] = useState(0)
   const [role, setRole] = useState(''), [sourceName, setSourceName] = useState(''), [sourceToken, setSourceToken] = useState('')
   const boundary = `${mode}:${session?.access_token || ''}`
   const boundaryRef = useRef(boundary)
@@ -50,7 +52,7 @@ function App() {
   }
 
   useEffect(() => {
-    setDetail(null); setNotice(''); setError(''); setLoaded(false); setBusy(false); setRole(''); setSourceToken(''); setSourceName('')
+    setTab(current => mode === 'demo' && current === 'network' ? 'overview' : current); setDetail(null); setNotice(''); setError(''); setLoaded(false); setBusy(false); setRole(''); setSourceToken(''); setSourceName('')
     // Clear data before switching boundaries so private failures never show demo metrics as real.
     setIncidents([]); setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 }); setSources([])
     if (mode === 'demo' || session) void refresh()
@@ -117,6 +119,7 @@ function App() {
         <button className={tab === 'overview' ? 'active' : ''} onClick={() => { setTab('overview'); setDetail(null) }}><LayoutDashboard size={18}/>Overview</button>
         <button className={tab === 'incidents' ? 'active' : ''} onClick={() => { setTab('incidents'); setDetail(null) }}><ShieldAlert size={18}/>Incidents <span className="nav-count">{stats.open_incidents}</span></button>
         <button className={tab === 'sources' ? 'active' : ''} onClick={() => { setTab('sources'); setDetail(null) }}><Radio size={18}/>Telemetry sources</button>
+        {mode === 'private' && <button className={tab === 'network' ? 'active' : ''} onClick={() => { setTab('network'); setDetail(null) }}><Activity size={18}/>Network events</button>}
       </nav>
       <div className="sidebar-note"><FileSearch size={19}/><strong>Evidence comes first.</strong><p>Trace every finding back to the events that support it.</p><span>EXPLAINABLE BY DESIGN</span></div>
       <div className="sidebar-bottom"><span className="dot"/>Foundation release <span>v0.1</span></div>
@@ -130,8 +133,8 @@ function App() {
         </div>
       </header>
       <div className="content">
-        <nav className="mobile-nav" aria-label="Mobile navigation">{(['overview', 'incidents', 'sources'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} onClick={() => { setTab(value); setDetail(null) }}>{value === 'sources' ? 'Sources' : value}</button>)}</nav>
-        <div className="page-heading"><div><div className="eyebrow">YOUR SECURITY, IN CONTEXT</div><h1>{detail ? 'Incident investigation' : tab === 'sources' ? 'Telemetry sources' : tab === 'incidents' ? 'Incident queue' : 'Security overview'}</h1><p>Understand the signal. Follow the evidence. Make the call.</p></div><button className="secondary" disabled={busy || privateLocked} onClick={() => void refresh()}><RefreshCw size={15} className={busy ? 'spin' : ''}/>Refresh</button></div>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{(['overview', 'incidents', 'sources', 'network'] as const).filter(value => value !== 'network' || mode === 'private').map(value => <button key={value} className={tab === value ? 'active' : ''} onClick={() => { setTab(value); setDetail(null) }}>{value === 'sources' ? 'Sources' : value}</button>)}</nav>
+        <div className="page-heading"><div><div className="eyebrow">YOUR SECURITY, IN CONTEXT</div><h1>{detail ? 'Incident investigation' : tab === 'network' ? 'Network events' : tab === 'sources' ? 'Telemetry sources' : tab === 'incidents' ? 'Incident queue' : 'Security overview'}</h1><p>Understand the signal. Follow the evidence. Make the call.</p></div><button className="secondary" disabled={busy || privateLocked} onClick={() => { if (tab === 'network') setNetworkRefresh(value => value + 1); else void refresh() }}><RefreshCw size={15} className={busy ? 'spin' : ''}/>Refresh</button></div>
         <div className="demo-banner"><Eye size={19}/><div><strong>{mode === 'demo' ? 'You’re exploring a demonstration workspace' : 'Private workspace · authenticated access'}</strong><p>{mode === 'demo' ? 'Synthetic authentication events. Fixed sample data, no live monitoring. All times use your browser’s timezone.' : 'Records below come from your backend. Only authorized members can access this workspace.'}</p></div><span>{mode === 'demo' ? 'READ ONLY' : 'RESTRICTED'}</span></div>
         {error && <div className="feedback error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         {notice && <div className="feedback" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16}/></button></div>}
@@ -144,11 +147,11 @@ function App() {
               <section className="panel"><div className="panel-heading"><h2>Detection rationale</h2></div>{detail.alerts.map(alert => <div className="rationale" key={alert.id}><code>{alert.rule_key}</code><p>{alert.explanation}</p></div>)}</section>
               <section className="panel disposition"><h2>Analyst disposition</h2><label htmlFor="disposition">Incident status</label><select id="disposition" value={detail.status} disabled={busy || ['closed', 'false_positive'].includes(detail.status)} onChange={e => void changeStatus(e.target.value as IncidentStatus)}>{['open', 'investigating', 'closed', 'false_positive'].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select></section></div>
             </div>
-          </> : tab === 'sources' ? <section className="panel"><div className="panel-heading"><h2>Registered sources</h2><span className="muted small">{sources.length} sources</span></div>{mode === 'private' && role === 'admin' && <div className="source-create"><form onSubmit={createSource}><label htmlFor="source-name">Add a telemetry source</label><div><input id="source-name" placeholder="e.g. Authentication lab" required maxLength={100} value={sourceName} onChange={e => setSourceName(e.target.value)}/><button className="primary" disabled={busy || !sourceName.trim()}>Create source</button></div></form>{sourceToken && <div className="source-secret"><strong>Save this source token now</strong><p>It is displayed once. Keep it private and use it only in your collector or local smoke test.</p><textarea aria-label="New source token" readOnly value={sourceToken}/><button className="secondary" onClick={() => setSourceToken('')}>Hide token</button></div>}</div>}{sources.length ? sources.map(source => <div className="source-row" key={source.id}><span className="source-icon"><Terminal size={20}/></span><div><strong>{source.name}</strong><p>{source.last_seen ? `Last received ${date(source.last_seen)}` : 'No events received yet'}</p></div><span className="status">{source.enabled ? 'enabled' : 'revoked'}</span></div>) : <div className="empty"><Radio/><p>No sources yet. An administrator can create one in this view.</p></div>}</section> : <>
+          </> : tab === 'network' && mode === 'private' ? <NetworkEvents key={boundary} sessionKey={boundary} refreshKey={networkRefresh}/> : tab === 'sources' ? <section className="panel"><div className="panel-heading"><h2>Registered sources</h2><span className="muted small">{sources.length} sources</span></div>{mode === 'private' && role === 'admin' && <div className="source-create"><form onSubmit={createSource}><label htmlFor="source-name">Add a telemetry source</label><div><input id="source-name" placeholder="e.g. Authentication lab" required maxLength={100} value={sourceName} onChange={e => setSourceName(e.target.value)}/><button className="primary" disabled={busy || !sourceName.trim()}>Create source</button></div></form>{sourceToken && <div className="source-secret"><strong>Save this source token now</strong><p>It is displayed once. Keep it private and use it only in your collector or local smoke test.</p><textarea aria-label="New source token" readOnly value={sourceToken}/><button className="secondary" onClick={() => setSourceToken('')}>Hide token</button></div>}</div>}{sources.length ? sources.map(source => <div className="source-row" key={source.id}><span className="source-icon"><Terminal size={20}/></span><div><strong>{source.name}</strong><p>{source.last_seen ? `Last received ${date(source.last_seen)}` : 'No events received yet'}</p></div><span className="status">{source.enabled ? 'enabled' : 'revoked'}</span></div>) : <div className="empty"><Radio/><p>No sources yet. An administrator can create one in this view.</p></div>}</section> : <>
             <div className="metrics">{[
               { label: 'Open incidents', value: stats.open_incidents, icon: ShieldAlert, note: 'Awaiting analyst review', accent: 'orange' },
               { label: 'Detection alerts', value: stats.alerts, icon: Activity, note: 'Evidence-backed findings', accent: 'purple' },
-              { label: 'Security events', value: stats.events, icon: Database, note: 'Persisted authentication records', accent: 'blue' },
+              { label: 'Security events', value: stats.events, icon: Database, note: 'Persisted security records', accent: 'blue' },
               { label: 'Registered sources', value: stats.sources, icon: Radio, note: mode === 'demo' ? 'Synthetic fixture source' : 'Configured telemetry sources', accent: 'green' },
             ].map(metric => <section className={`metric ${metric.accent}`} key={metric.label}><div><span>{metric.label}</span><metric.icon size={18}/></div><strong>{loaded ? metric.value.toLocaleString() : '—'}</strong><p>{metric.note}</p></section>)}</div>
             <div className="overview-grid"><section className="panel queue"><div className="panel-heading"><div><h2>Incident queue <span className="count">{incidents.length}</span></h2><p>Prioritized findings that need a closer look.</p></div><span className="small muted">LATEST 100</span></div>

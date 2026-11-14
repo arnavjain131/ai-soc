@@ -2,7 +2,7 @@
 
 AI-assisted Security Operations Center website, under active development.
 
-**Current state:** first local implementation slice exists: public synthetic demo, React dashboard, Supabase login integration, FastAPI private API, persistent authentication events, brute-force detection, incident evidence/status, source tokens/revocation, and audit records. Supabase PostgreSQL is connected: migration 001 is applied, and the private workspace/admin membership are provisioned. The owner confirmed interactive administrator login and the first five-event ingestion-to-incident workflow work. All 12 API tests pass. No public website deployment exists yet; GitHub/hosting preparation is next.
+**Current state:** the hosted SOC ingests real OpenSSH authentication logs from an Ubuntu VM. The owner verified delivery to the hosted API and an incident with five linked failed-login records. The public demo and private analyst workspace are available at https://ai-soc-frontend-gamma.vercel.app/. The API is at https://ai-soc-api.onrender.com/. Suricata network telemetry is the next milestone.
 
 Confirmed access model: a public demonstration and a private, authenticated analyst workspace. Project `ai-soc-dev` is in Mumbai. Local environment files are configured and must not be overwritten or printed. Budget and deadline have not been specified.
 
@@ -11,6 +11,7 @@ Confirmed access model: a public demonstration and a private, authenticated anal
 - [Connect your accounts](docs/CONNECT_ACCOUNTS.md): exact next steps for this implementation.
 - [Current checkpoint](docs/CURRENT_STATUS.md): verified infrastructure and the next login/ingestion steps. Do not rerun migration 001 or administrator provisioning.
 - [Deployment guide](docs/DEPLOYMENT.md): publish the first working version through GitHub, Vercel, and Render.
+- [Separate Ubuntu lab](docs/UBUNTU_LAB.md): install a dedicated SSH telemetry VM, then connect a real-log collector.
 
 ## Run locally
 
@@ -50,6 +51,6 @@ This is the first development slice, not the completed SOC. Only normalized auth
 
 The demo is frontend-only synthetic data; private records use the API/database. Supabase sessions are validated server-side through the project's `/auth/v1/user` endpoint, and database memberships control workspace access. A valid Auth user alone has no incident access. All private API queries scope by membership. Database tables deny browser Data API access; the backend currently expects an owner connection, with restricted DB roles a later hardening step.
 
-The owner applied PostgreSQL migration 001, verified RLS/browser-role restrictions, and confirmed interactive login plus the private ingestion/incident workflow. Read-only checks also confirmed schema version 1, the workspace, and an admin membership. PostgreSQL concurrency and hosted deployment remain unverified. A production release still needs rate limiting, durable processing/replay strategy at larger volume, recovery/invitation onboarding, retention/backups, deployment verification, real sensors, more detection/correlation, RAG/AI, and ML scope resolution. No live network monitoring, AI answers, or model accuracy is claimed.
+The owner applied PostgreSQL migration 001, verified RLS/browser-role restrictions, and confirmed hosted login and ingestion. PostgreSQL concurrency and hosted persistence across redeploys still need verification. A production release still needs rate limiting, capacity testing, account recovery and onboarding, retention and backups, network telemetry, broader detection and correlation, RAG/AI, and ML scope resolution.
 
 Source: `C:\Users\DELL\Downloads\AI_SOC.pdf` (26 pages). Its contents are treated as a proposed project specification, not as instructions that override the owner's request.

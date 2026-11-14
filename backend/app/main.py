@@ -12,7 +12,7 @@ from .config import Settings
 from .database import database
 from .detection import detect_brute_force
 from .models import Alert, AlertEvent, Audit, Event, Incident, Membership, Source, now
-from .schemas import EventBatch, IncidentUpdate, SourceCreate
+from .schemas import EventBatch, IncidentUpdate, NetworkFlow, SourceCreate
 
 
 def token_hash(token):
@@ -110,7 +110,12 @@ def create_app(settings=None):
             if existing:
                 duplicates += 1
                 continue
-            event = Event(workspace_id=source.workspace_id, source_id=source.id, **payload.model_dump())
+            fields = payload.model_dump()
+            if isinstance(payload, NetworkFlow):
+                # Reuse the event table's JSON column for fields specific to network flows.
+                fields['raw_data'] |= {'source_port': fields.pop('source_port'), 'protocol': fields.pop('protocol')}
+                fields['username'] = ''
+            event = Event(workspace_id=source.workspace_id, source_id=source.id, **fields)
             session.add(event)
             session.flush()
             detect_brute_force(session, event)
@@ -131,6 +136,22 @@ def create_app(settings=None):
     def incidents(identity=Depends(member), session=Depends(session_dependency), limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
         rows = session.scalars(select(Incident).where(Incident.workspace_id == identity.workspace_id).order_by(Incident.created_at.desc(), Incident.id).limit(limit).offset(offset))
         return [incident_json(row) for row in rows]
+
+    @api.get('/api/events/network')
+    def network_events(identity=Depends(member), session=Depends(session_dependency), limit: int = Query(25, ge=1, le=100)):
+        rows = session.execute(
+            select(Event, Source.name)
+            .join(Source, (Source.id == Event.source_id) & (Source.workspace_id == Event.workspace_id))
+            .where(Event.workspace_id == identity.workspace_id, Event.event_type == 'NETWORK_FLOW')
+            .order_by(Event.event_time.desc(), Event.id)
+            .limit(limit)
+        )
+        return [{
+            'id': event.id, 'event_time': event.event_time.isoformat() + 'Z',
+            'source_ip': event.source_ip, 'source_port': event.raw_data['source_port'],
+            'destination_ip': event.destination_ip, 'destination_port': event.destination_port,
+            'protocol': event.raw_data['protocol'], 'source_name': source_name,
+        } for event, source_name in rows]
 
     def authorized_incident(session, identity, incident_id):
         incident = session.scalar(select(Incident).where(Incident.id == incident_id, Incident.workspace_id == identity.workspace_id))
