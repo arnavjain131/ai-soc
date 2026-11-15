@@ -1,6 +1,6 @@
 # Current checkpoint
 
-Updated 16 November 2026 after the owner confirmed automatic Suricata forwarding. Keep credentials in ignored local configuration.
+Updated 16 November 2026 after the owner confirmed live Suricata alert display. Keep credentials in ignored local configuration.
 
 ## Infrastructure
 
@@ -69,7 +69,7 @@ The source was pushed successfully to https://github.com/arnavjain131/ai-soc on 
 
 API `/health/live` and `/health/ready` returned 200, anonymous `/api/incidents` returned 401, and CORS and the authenticated-request preflight allowed the Vercel origin. The owner confirmed hosted login and subsequently verified live ingestion. Persistence across a hosted redeploy still needs verification.
 
-The owner confirmed automatic Suricata forwarding on Ubuntu. The next release adds Suricata alert ingestion and shows related network records on failed-login incident timelines. The guest forwarder must be updated after the hosted API deploys. See phase 8 of the Ubuntu lab guide for live verification. RAG/AI and ML scope follow.
+Automatic Suricata forwarding and hosted alert display are verified. The isolated forwarder-to-API test verified that matching flows and alerts appear on an SSH incident when they fall within its correlation window. Live incident correlation remains open. The next development milestone is an incident explanation that cites the linked evidence and shows relevant network context.
 
 ## Completed: hosted SSH telemetry
 
@@ -80,3 +80,19 @@ The owner installed `ai-soc-ssh.service`, transferred the journal cursor fix to 
 ## Completed: Suricata flow import
 
 The owner validated and enabled Suricata 7.0.3 on `AI-SOC-Ubuntu`, with AF-PACKET on `enp0s3` and Emerging Threats rules installed. The owner manually imported a captured SSH flow into the Render API at commit `b8504af`, which returned `{"accepted": 1, "duplicates": 0}`. The private Network events view on Vercel displayed `2026-11-14 21:34:43.547Z`, TCP, `10.0.2.2:64620` to `10.0.2.15:22`, collector `Ubuntu Suricata`. The SSH journal service continues to deliver authentication events independently.
+
+## Completed live Suricata alert display
+
+The owner made a normal SSH connection after the temporary lab signature was verified in the running Suricata ruleset. The sensor wrote one EVE alert for signature `1000491` and the runner restored the original rules. Supabase persisted the alert at `2026-11-15 21:35:28.947Z` from `10.0.2.2:64491` to `10.0.2.15:22` over TCP. The owner confirmed the private Network events view showed the alert, its severity, and the flow for the same TCP endpoints and ports. The alert falls outside all existing incident windows.
+
+## Expanded detection
+
+The release adds three rules evaluated on new ingestion. See the [lab guide](UBUNTU_LAB.md#phase-9-enable-network-detection) for collector configuration.
+
+| Rule | Trigger | Priority |
+| --- | --- | --- |
+| Password spraying | Five distinct accounts with failed logins within 120 seconds from one peer to one target and service port | High |
+| Possible TCP port scan | Flow records for eight distinct destination ports within 60 seconds from one peer to one target | Medium |
+| Priority Suricata alert | Sensor severity 1 or 2. Repeats of the same signature, protocol and endpoints within five minutes are suppressed | Critical or high |
+
+Pattern detection is scoped by workspace and collector. The TCP rule uses flow event timestamps, which may differ from connection start times. Suricata severity 3 records, including the lab verification signature, remain visible as telemetry. Network incident evidence shows the collector, protocol, addresses, ports and signature when present.

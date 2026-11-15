@@ -1,4 +1,4 @@
-"""Queue and forward SSH flows and alerts from the lab's Suricata EVE log."""
+"""Queue and forward TCP flows and alerts from the lab's Suricata EVE log."""
 
 import hashlib
 import json
@@ -27,6 +27,16 @@ LOG = logging.getLogger('ai-soc-suricata')
 MAX_LINE = 1024 * 1024
 SCAN_LIMIT = 250
 ANCHOR_SIZE = 128
+SSH_PORTS = frozenset({22})
+
+
+def parse_ports(value):
+    if value == 'all':
+        return None
+    ports = frozenset(int(port) for port in value.split(','))
+    if any(not 1 <= port <= 65535 for port in ports):
+        raise ValueError('Destination port out of range')
+    return ports
 
 
 def initialize(db):
@@ -76,7 +86,7 @@ def open_checkpoint_file(path, identity):
     raise RuntimeError('Previous EVE file is unavailable. Check log rotation and retention.')
 
 
-def read_records(db, stream, offset, source_ip, destination_ip, capacity):
+def read_records(db, stream, offset, source_ip, destination_ip, capacity, ports):
     added = 0
     stream.seek(offset)
     for _ in range(SCAN_LIMIT):
@@ -92,9 +102,8 @@ def read_records(db, stream, offset, source_ip, destination_ip, capacity):
             event = normalize(entry) or normalize_alert(entry)
         except ValueError:
             event = None
-        if event and (event['source_ip'], event['destination_ip'], event['destination_port'], event['protocol']) == (
-            source_ip, destination_ip, 22, 'TCP',
-        ):
+        if (event and (event['source_ip'], event['destination_ip'], event['protocol']) ==
+                (source_ip, destination_ip, 'TCP') and (ports is None or event['destination_port'] in ports)):
             if datetime.fromisoformat(event['event_time']) > datetime.now(timezone.utc) + timedelta(minutes=4):
                 LOG.warning('Suricata timestamp is ahead of the clock. Check time synchronization.')
                 break
@@ -108,7 +117,7 @@ def read_records(db, stream, offset, source_ip, destination_ip, capacity):
     return added, offset, False
 
 
-def collect(db, path, source_ip, destination_ip):
+def collect(db, path, source_ip, destination_ip, ports=SSH_PORTS):
     with db, path.open('rb') as current:
         capacity = QUEUE_LIMIT - db.execute('SELECT count(*) FROM pending').fetchone()[0]
         position = db.execute('SELECT device, inode, offset, anchor FROM eve_position WHERE id = 1').fetchone()
@@ -125,7 +134,7 @@ def collect(db, path, source_ip, destination_ip):
         try:
             if os.fstat(stream.fileno()).st_size < offset or fingerprint(stream, offset) != anchor:
                 raise RuntimeError('EVE log changed before the saved offset. Check rotation before resuming.')
-            added, offset, at_end = read_records(db, stream, offset, source_ip, destination_ip, capacity)
+            added, offset, at_end = read_records(db, stream, offset, source_ip, destination_ip, capacity, ports)
             if rotated and at_end:
                 save_position(db, current, 0)
             else:
@@ -136,13 +145,13 @@ def collect(db, path, source_ip, destination_ip):
                 stream.close()
 
 
-def run(db, endpoint, token, path, source_ip, destination_ip):
+def run(db, endpoint, token, path, source_ip, destination_ip, ports):
     opener = build_opener(NoRedirect())
     retry_at = 0
     backoff = 5
     while True:
         try:
-            added = collect(db, path, source_ip, destination_ip)
+            added = collect(db, path, source_ip, destination_ip, ports)
             if added:
                 LOG.info('Queued %d Suricata events', added)
         except RuntimeError as error:
@@ -176,6 +185,7 @@ def main():
             raise ValueError('Expected an absolute EVE log path')
         source_ip = str(ip_address(os.environ['SOC_FLOW_SOURCE_IP']))
         destination_ip = str(ip_address(os.environ['SOC_FLOW_DESTINATION_IP']))
+        ports = parse_ports(os.environ.get('SOC_FLOW_DESTINATION_PORTS', '22').strip())
         token = (Path(os.environ['CREDENTIALS_DIRECTORY']) / 'source-token').read_text(encoding='utf-8').strip()
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,256}', token):
             raise ValueError('Invalid source token format')
@@ -185,7 +195,7 @@ def main():
 
     with closing(sqlite3.connect(state)) as db:
         initialize(db)
-        run(db, api_url + '/api/events/batch', token, path, source_ip, destination_ip)
+        run(db, api_url + '/api/events/batch', token, path, source_ip, destination_ip, ports)
 
 
 if __name__ == '__main__':

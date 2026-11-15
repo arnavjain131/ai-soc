@@ -147,6 +147,86 @@ def test_entities_are_not_mixed(environment):
     assert client.get('/api/incidents').json() == []
 
 
+def test_password_spray_counts_distinct_accounts_and_keeps_brute_force_separate(environment):
+    app, client, owner, *_ = environment
+    app.dependency_overrides[verified_user] = lambda: owner
+    ingest(client, batch(user='alice'))
+    others = batch((70, 80, 90, 120), prefix='other-accounts')['events']
+    for event, name in zip(others, ('bob', 'carol', 'dave', 'erin')):
+        event['username'] = name
+    assert ingest(client, {'events': others[:3]}).json()['accepted'] == 3
+    assert {row['title'] for row in client.get('/api/incidents').json()} == {'Possible brute force against alice'}
+    assert ingest(client, {'events': others[3:]}).json()['accepted'] == 1
+    incidents = client.get('/api/incidents').json()
+    spray, = [row for row in incidents if row['title'] == 'Possible password spraying']
+    detail = client.get('/api/incidents/' + spray['id']).json()
+    assert detail['alerts'][0]['rule_key'] == 'password_spray_v1'
+    assert {row['username'] for row in detail['events']} == {'alice', 'bob', 'carol', 'dave', 'erin'}
+    assert len(incidents) == 2
+
+
+def network_fixture(event_id, seconds=0, **fields):
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    event = {
+        'external_event_id': event_id, 'event_type': 'NETWORK_FLOW',
+        'event_time': (base + timedelta(seconds=seconds)).isoformat(),
+        'source_ip': '192.0.2.4', 'source_port': 51000, 'destination_ip': '198.51.100.8',
+        'destination_port': 22, 'protocol': 'TCP', 'raw_data': {'provenance': 'suricata_eve'},
+    }
+    return event | fields
+
+
+def test_tcp_port_scan_groups_distinct_ports_and_supports_late_events(environment):
+    app, client, owner, outsider, _ = environment
+    app.dependency_overrides[verified_user] = lambda: owner
+    with app.state.sessions.begin() as db:
+        db.add(Source(workspace_id=db.get(Membership, outsider).workspace_id,
+                      name='Other sensor', token_hash=token_hash('other-source')))
+    flows = [network_fixture(f'flow-{port}', i * 8, destination_port=port)
+             for i, port in enumerate(range(10001, 10009))]
+    noise = [
+        network_fixture('same-port', 45, destination_port=10008),
+        network_fixture('udp', 45, destination_port=10001, protocol='UDP'),
+        network_fixture('other-destination', 45, destination_port=10001, destination_ip='198.51.100.9'),
+        network_fixture('other-peer', 45, destination_port=10001, source_ip='192.0.2.5'),
+        network_fixture('expired', -61, destination_port=10001),
+    ]
+    assert ingest(client, {'events': flows[1:] + noise}).status_code == 200
+    assert client.post('/api/events/batch', json={'events': [flows[0]]},
+                       headers={'X-Source-Token': 'other-source'}).status_code == 200
+    assert client.get('/api/incidents').json() == []
+    assert ingest(client, {'events': [flows[0]]}).json() == {'accepted': 1, 'duplicates': 0}
+    assert ingest(client, {'events': [flows[0]]}).json() == {'accepted': 0, 'duplicates': 1}
+    incident, = client.get('/api/incidents').json()
+    detail = client.get('/api/incidents/' + incident['id']).json()
+    assert incident['severity'] == 'medium'
+    assert detail['alerts'][0]['rule_key'] == 'tcp_port_scan_v1'
+    assert {row['destination_port'] for row in detail['events']} == set(range(10001, 10009))
+    assert all(row['protocol'] == 'TCP' and row['source_port'] == 51000 for row in detail['events'])
+
+
+def test_suricata_priority_alerts_create_incidents_and_throttle_repeats(environment):
+    app, client, owner, *_ = environment
+    app.dependency_overrides[verified_user] = lambda: owner
+    fields = dict(event_type='SURICATA_ALERT', signature_id=4_000_000_001, signature='Test sensor alert')
+    records = [
+        network_fixture('informational', severity=3, **fields),
+        network_fixture('priority-one', 10, severity=1, **fields),
+        network_fixture('repeat', 15, severity=1, **fields),
+        network_fixture('priority-two', 311, severity=2, **fields),
+    ]
+    assert ingest(client, {'events': records}).json() == {'accepted': 4, 'duplicates': 0}
+    incidents = client.get('/api/incidents').json()
+    assert sorted(row['severity'] for row in incidents) == ['critical', 'high']
+    assert len(client.get('/api/events/network').json()) == 4
+    for incident in incidents:
+        detail = client.get('/api/incidents/' + incident['id']).json()
+        assert detail['alerts'][0]['rule_key'] == 'suricata_priority_alert_v1'
+        evidence, = detail['events']
+        assert evidence['signature_id'] == 4_000_000_001
+        assert evidence['severity'] in (1, 2)
+
+
 def test_access_boundaries_and_membership(environment):
     app, client, owner, outsider, _ = environment
     assert client.get('/api/incidents').status_code == 401

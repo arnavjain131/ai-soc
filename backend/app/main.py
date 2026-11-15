@@ -11,12 +11,13 @@ from sqlalchemy import func, select, text
 from .auth import Identity, verified_user
 from .config import Settings
 from .database import database
-from .detection import detect_brute_force
+from .detection import evaluate_event
 from .models import Alert, AlertEvent, Audit, Event, Incident, Membership, Source, now
 from .schemas import EventBatch, IncidentUpdate, NetworkRecord, SourceCreate, SuricataAlert
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
+API_VERSION = '0.2.0'
 
 
 def token_hash(token):
@@ -121,7 +122,7 @@ def create_app(settings=None):
         yield
         engine.dispose()
 
-    api = FastAPI(title='AI SOC API', version='0.1.0', lifespan=lifespan)
+    api = FastAPI(title='AI SOC API', version=API_VERSION, lifespan=lifespan)
     api.state.settings, api.state.engine, api.state.sessions = settings, engine, sessions
     api.add_middleware(BodyLimit)
     api.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.origins.split(',')],
@@ -129,7 +130,7 @@ def create_app(settings=None):
 
     @api.get('/health/live')
     def live():
-        return {'status': 'ok', 'version': '0.1.0'}
+        return {'status': 'ok', 'version': API_VERSION}
 
     @api.get('/health/ready')
     def ready(session=Depends(session_dependency)):
@@ -168,7 +169,7 @@ def create_app(settings=None):
             event = Event(workspace_id=source.workspace_id, source_id=source.id, **fields)
             session.add(event)
             session.flush()
-            detect_brute_force(session, event)
+            evaluate_event(session, event)
             accepted += 1
         source.last_seen = now()
         session.commit()
@@ -206,13 +207,26 @@ def create_app(settings=None):
     def detail(incident_id: str, identity=Depends(member), session=Depends(session_dependency)):
         incident = authorized_incident(session, identity, incident_id)
         alerts = list(session.scalars(select(Alert).where(Alert.incident_id == incident.id)))
-        evidence = session.scalars(select(Event).join(AlertEvent, AlertEvent.event_id == Event.id).join(Alert, Alert.id == AlertEvent.alert_id).where(
-            Alert.incident_id == incident.id, Event.workspace_id == identity.workspace_id).order_by(Event.event_time, Event.id)).unique().all()
+        rows = session.execute(
+            select(Event, Source.name)
+            .join(AlertEvent, AlertEvent.event_id == Event.id)
+            .join(Alert, Alert.id == AlertEvent.alert_id)
+            .join(Source, (Source.id == Event.source_id) & (Source.workspace_id == Event.workspace_id))
+            .where(Alert.incident_id == incident.id, Event.workspace_id == identity.workspace_id)
+            .order_by(Event.event_time, Event.id)
+        ).unique().all()
+        events = [
+            network_event_json(event, source_name) if event.event_type in NETWORK_TYPES else {
+                'id': event.id, 'event_time': event.event_time.isoformat() + 'Z', 'event_type': event.event_type,
+                'username': event.username, 'source_ip': event.source_ip,
+                'destination_ip': event.destination_ip, 'destination_port': event.destination_port,
+            }
+            for event, source_name in rows
+        ]
         return incident_json(incident) | {
             'alerts': [{'id': a.id, 'rule_key': a.rule_key, 'explanation': a.explanation} for a in alerts],
-            'events': [{'id': e.id, 'event_time': iso(e.event_time), 'event_type': e.event_type, 'username': e.username,
-                        'source_ip': e.source_ip, 'destination_ip': e.destination_ip, 'destination_port': e.destination_port} for e in evidence],
-            'related_network_events': related_network_events(session, identity.workspace_id, evidence),
+            'events': events,
+            'related_network_events': related_network_events(session, identity.workspace_id, [event for event, _ in rows]),
         }
 
     @api.patch('/api/incidents/{incident_id}')

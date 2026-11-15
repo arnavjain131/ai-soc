@@ -14,6 +14,7 @@ const statusLabel = (value: string) => value.replaceAll('_', ' ')
 
 function EvidenceTimeline({ detail }: { detail: Detail }) {
   const related = detail.related_network_events ?? []
+  const relatedIds = new Set(related.map(event => event.id))
   const timeline = [...detail.events, ...related].sort(
     (a, b) => Date.parse(a.event_time) - Date.parse(b.event_time) || a.id.localeCompare(b.id),
   )
@@ -30,7 +31,7 @@ function EvidenceTimeline({ detail }: { detail: Detail }) {
       <span className="timeline-point"/>
       <time dateTime={event.event_time} title={event.event_time}>{date(event.event_time)}</time>
       {'protocol' in event ? <>
-        <h3>{event.event_type === 'SURICATA_ALERT' ? 'Related Suricata alert' : 'Related network flow'}</h3>
+        <h3>{relatedIds.has(event.id) ? 'Related ' : ''}{event.event_type === 'SURICATA_ALERT' ? 'Suricata alert' : 'Network flow'}</h3>
         {event.signature && <p><strong>{event.signature}</strong> · Signature {event.signature_id} · Suricata severity {event.severity}</p>}
         <p>{event.source_name} · {event.protocol} · {networkAddress(event.source_ip, event.source_port)} → {networkAddress(event.destination_ip, event.destination_port)}</p>
       </> : <>

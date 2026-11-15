@@ -7,7 +7,7 @@ from urllib.error import URLError
 
 import pytest
 
-from collector.suricata_forwarder import collect, deliver, initialize, normalize
+from collector.suricata_forwarder import collect, deliver, initialize, normalize, parse_ports
 
 
 def flow(flow_id, **fields):
@@ -98,6 +98,22 @@ def test_forwards_matching_suricata_alert_without_packet_payload(tmp_path):
         assert (event['signature_id'], event['signature'], event['severity']) == (1234, 'Fixture SSH alert', 3)
         assert event['raw_data'] == {'provenance': 'suricata_eve'}
         assert 'payload' not in event
+
+
+def test_widening_ports_keeps_the_lab_peer_and_target_filter(tmp_path):
+    log = tmp_path / 'eve.json'
+    log.touch()
+    with closing(sqlite3.connect(':memory:')) as db:
+        initialize(db)
+        assert scan(db, log) == 0
+        allowed = flow(3, dest_port=443)
+        append(log, allowed, flow(4, dest_port=80), flow(5, dest_port=443, src_ip='10.0.2.3'),
+               flow(6, dest_port=443, dest_ip='10.0.2.16'))
+        assert collect(db, log, '10.0.2.2', '10.0.2.15', parse_ports('22,443')) == 1
+        assert pending(db) == [normalize(allowed)['external_event_id']]
+    assert parse_ports('all') is None
+    with pytest.raises(ValueError):
+        parse_ports('22,65536')
 
 
 def test_rewritten_log_leaves_checkpoint_and_pending_events_intact(tmp_path):

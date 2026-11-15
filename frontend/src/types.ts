@@ -23,7 +23,7 @@ export type Incident = {
 }
 export type Detail = Incident & {
   alerts: { id: string; rule_key: string; explanation: string }[]
-  events: SecurityEvent[]
+  events: (SecurityEvent | NetworkEvent)[]
   related_network_events?: NetworkEvent[]
 }
 export type Stats = { events: number; alerts: number; incidents: number; sources: number; open_incidents: number }

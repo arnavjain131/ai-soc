@@ -214,3 +214,11 @@ Update the guest after the hosted API accepts `SURICATA_ALERT`. From Windows, re
 Check that Suricata's EVE output includes the `alert` type. Look for a matching alert already observed by the lab sensor or let the service run until one occurs. The forwarder uses the existing lab TCP endpoint filter for both flows and alerts. **Network events** shows the signature name, ID, and sensor severity when a matching alert arrives.
 
 Open a failed-login incident and refresh it. The timeline shows up to 50 related TCP flows and Suricata alerts from the same workspace that match the source IP, destination IP and port. The search starts two minutes before the first linked failure and ends two minutes after the last. The match provides context because several sessions can share a NAT address. Existing stored flows can appear immediately when they match. Alerts written before the guest update and already passed by the saved checkpoint require a separate backfill if needed.
+
+## Phase 9: enable network detection
+
+Deploy the updated API and frontend before upgrading the lab forwarder. Password spray detection uses the existing SSH journal feed. The new network rules use the existing flow and alert formats and database tables.
+
+For port scan detection, copy the forwarder files from phase 7 and rerun the installer on Ubuntu. Set `SOC_FLOW_DESTINATION_PORTS` in `/etc/ai-soc/suricata-forwarder.conf` using `sudoedit`. Use `all` to monitor every TCP destination port **between the two configured lab IP addresses**, or provide a comma-separated list with at least eight authorized ports. Leaving the setting unset collects port 22. Apply the setting with `sudo systemctl restart ai-soc-suricata.service` and check the service journal. The installer uses the existing token and queue.
+
+The rules apply to newly ingested records. The local automated checks use isolated fixtures for positive and negative detection cases. In the hosted lab, verify any naturally observed event by opening its incident and comparing the linked flow or signature with Network events.
