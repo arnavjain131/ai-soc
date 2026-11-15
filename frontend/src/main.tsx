@@ -6,10 +6,41 @@ import { api, supabase } from './api'
 import { NetworkEvents } from './NetworkEvents'
 import { demoIncidents, demoSources, demoStats } from './demo'
 import type { Detail, Incident, IncidentStatus, Source, Stats } from './types'
+import { networkAddress } from './types'
 import './styles.css'
 
 function date(value: string) { return new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) }
 const statusLabel = (value: string) => value.replaceAll('_', ' ')
+
+function EvidenceTimeline({ detail }: { detail: Detail }) {
+  const related = detail.related_network_events ?? []
+  const timeline = [...detail.events, ...related].sort(
+    (a, b) => Date.parse(a.event_time) - Date.parse(b.event_time) || a.id.localeCompare(b.id),
+  )
+
+  return <section className="panel">
+    <div className="panel-heading">
+      <div>
+        <h2>Evidence timeline</h2>
+        {related.length > 0 && <p>Related network events match the TCP endpoints and occurred within two minutes of the failed-login window.</p>}
+      </div>
+      <span className="small muted">{detail.events.length} linked events{related.length > 0 && ` · ${related.length} related`}</span>
+    </div>
+    <div className="timeline">{timeline.map(event => <article key={event.id}>
+      <span className="timeline-point"/>
+      <time dateTime={event.event_time} title={event.event_time}>{date(event.event_time)}</time>
+      {'protocol' in event ? <>
+        <h3>{event.event_type === 'SURICATA_ALERT' ? 'Related Suricata alert' : 'Related network flow'}</h3>
+        {event.signature && <p><strong>{event.signature}</strong> · Signature {event.signature_id} · Suricata severity {event.severity}</p>}
+        <p>{event.source_name} · {event.protocol} · {networkAddress(event.source_ip, event.source_port)} → {networkAddress(event.destination_ip, event.destination_port)}</p>
+      </> : <>
+        <h3>{statusLabel(event.event_type.toLowerCase())}</h3>
+        <p><strong>{event.username}</strong> · {event.source_ip} → {networkAddress(event.destination_ip, event.destination_port)}</p>
+      </>}
+      <span className="mono muted">{event.id}</span>
+    </article>)}</div>
+  </section>
+}
 
 function App() {
   const [mode, setMode] = useState<'demo' | 'private'>('demo')
@@ -134,7 +165,7 @@ function App() {
       </header>
       <div className="content">
         <nav className="mobile-nav" aria-label="Mobile navigation">{(['overview', 'incidents', 'sources', 'network'] as const).filter(value => value !== 'network' || mode === 'private').map(value => <button key={value} className={tab === value ? 'active' : ''} onClick={() => { setTab(value); setDetail(null) }}>{value === 'sources' ? 'Sources' : value}</button>)}</nav>
-        <div className="page-heading"><div><div className="eyebrow">YOUR SECURITY, IN CONTEXT</div><h1>{detail ? 'Incident investigation' : tab === 'network' ? 'Network events' : tab === 'sources' ? 'Telemetry sources' : tab === 'incidents' ? 'Incident queue' : 'Security overview'}</h1><p>Understand the signal. Follow the evidence. Make the call.</p></div><button className="secondary" disabled={busy || privateLocked} onClick={() => { if (tab === 'network') setNetworkRefresh(value => value + 1); else void refresh() }}><RefreshCw size={15} className={busy ? 'spin' : ''}/>Refresh</button></div>
+        <div className="page-heading"><div><div className="eyebrow">YOUR SECURITY, IN CONTEXT</div><h1>{detail ? 'Incident investigation' : tab === 'network' ? 'Network events' : tab === 'sources' ? 'Telemetry sources' : tab === 'incidents' ? 'Incident queue' : 'Security overview'}</h1><p>Understand the signal. Follow the evidence. Make the call.</p></div><button className="secondary" disabled={busy || privateLocked} onClick={() => { if (detail) void openIncident(detail); else if (tab === 'network') setNetworkRefresh(value => value + 1); else void refresh() }}><RefreshCw size={15} className={busy ? 'spin' : ''}/>Refresh</button></div>
         <div className="demo-banner"><Eye size={19}/><div><strong>{mode === 'demo' ? 'You’re exploring a demonstration workspace' : 'Private workspace · authenticated access'}</strong><p>{mode === 'demo' ? 'Synthetic authentication events. Fixed sample data, no live monitoring. All times use your browser’s timezone.' : 'Records below come from your backend. Only authorized members can access this workspace.'}</p></div><span>{mode === 'demo' ? 'READ ONLY' : 'RESTRICTED'}</span></div>
         {error && <div className="feedback error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         {notice && <div className="feedback" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16}/></button></div>}
@@ -142,7 +173,7 @@ function App() {
           {detail ? <>
             <button className="back" onClick={() => setDetail(null)}>← Back to incident queue</button>
             <section className="panel incident-header"><div><div className="eyebrow">{detail.id.startsWith('demo') ? 'DEMONSTRATION INCIDENT' : 'INCIDENT'}</div><h2>{detail.title}</h2><span className="mono muted">{detail.id}</span></div><span className="severity">{detail.severity.toUpperCase()}</span></section>
-            <div className="detail-grid"><section className="panel"><div className="panel-heading"><h2>Evidence timeline</h2><span className="small muted">{detail.events.length} linked events</span></div><div className="timeline">{detail.events.map(event => <article key={event.id}><span className="timeline-point"/><time>{date(event.event_time)}</time><h3>{statusLabel(event.event_type.toLowerCase())}</h3><p><strong>{event.username}</strong> · {event.source_ip} → {event.destination_ip}:{event.destination_port}</p><span className="mono muted">{event.id}</span></article>)}</div></section>
+            <div className="detail-grid"><EvidenceTimeline detail={detail}/>
               <div className="stack"><section className="panel risk"><div className="panel-heading"><h2>Risk breakdown</h2><ShieldAlert size={17}/></div><div className="risk-number">{detail.risk_score}<span>/100</span></div><p className="muted small">Prioritization score · not a probability</p>{Object.entries(detail.score_components).map(([key, value]) => <div className="score-line" key={key}><span>{statusLabel(key)}</span><strong>+{value}</strong></div>)}</section>
               <section className="panel"><div className="panel-heading"><h2>Detection rationale</h2></div>{detail.alerts.map(alert => <div className="rationale" key={alert.id}><code>{alert.rule_key}</code><p>{alert.explanation}</p></div>)}</section>
               <section className="panel disposition"><h2>Analyst disposition</h2><label htmlFor="disposition">Incident status</label><select id="disposition" value={detail.status} disabled={busy || ['closed', 'false_positive'].includes(detail.status)} onChange={e => void changeStatus(e.target.value as IncidentStatus)}>{['open', 'investigating', 'closed', 'false_positive'].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select></section></div>

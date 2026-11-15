@@ -1,0 +1,2 @@
+collector/*.sh text eol=lf
+collector/*.service text eol=lf

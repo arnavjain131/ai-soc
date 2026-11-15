@@ -20,6 +20,16 @@ else:
 def normalize(entry):
     if not isinstance(entry, dict) or entry.get('event_type') != 'flow':
         return None
+    return normalize_network_record(entry)
+
+
+def normalize_alert(entry):
+    if not isinstance(entry, dict) or entry.get('event_type') != 'alert':
+        return None
+    return normalize_network_record(entry)
+
+
+def normalize_network_record(entry):
     protocol = entry.get('proto')
     if protocol not in ('TCP', 'UDP'):
         return None
@@ -36,16 +46,31 @@ def normalize(entry):
     if any(type(port) is not int or not 1 <= port <= 65535 for port in (source_port, destination_port)):
         return None
     flow_id = entry.get('flow_id')
-    if type(flow_id) is not int or not 0 <= flow_id < 2**64:
+    is_alert = entry['event_type'] == 'alert'
+    if (flow_id is not None or not is_alert) and (type(flow_id) is not int or not 0 <= flow_id < 2**64):
         return None
     identity = [flow_id, timestamp, protocol, source_ip, source_port, destination_ip, destination_port]
+    metadata = {}
+    if is_alert:
+        alert = entry.get('alert')
+        if not isinstance(alert, dict):
+            return None
+        signature_id, signature, severity = (alert.get(name) for name in ('signature_id', 'signature', 'severity'))
+        if (type(signature_id) is not int or not 1 <= signature_id < 2**32
+                or not isinstance(signature, str) or not signature.strip()
+                or type(severity) is not int or not 1 <= severity <= 255):
+            return None
+        metadata = {'signature_id': signature_id, 'signature': signature.strip()[:256], 'severity': severity}
+        identity.extend((alert.get('gid'), signature_id))
     digest = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
     return {
-        'external_event_id': f'suricata-flow-{digest}',
-        'event_type': 'NETWORK_FLOW', 'event_time': timestamp, 'protocol': protocol,
+        'external_event_id': f"suricata-{entry['event_type']}-{digest}",
+        'event_type': 'SURICATA_ALERT' if is_alert else 'NETWORK_FLOW',
+        'event_time': timestamp, 'protocol': protocol,
         'source_ip': source_ip, 'source_port': source_port,
         'destination_ip': destination_ip, 'destination_port': destination_port,
         'raw_data': {'provenance': 'suricata_eve'},
+        **metadata,
     }
 
 

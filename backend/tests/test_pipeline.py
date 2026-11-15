@@ -61,6 +61,53 @@ def test_network_flow_is_persisted_and_visible_only_to_members(environment):
     assert client.get('/api/incidents').json() == []
 
 
+def test_incident_network_context_matches_workspace_endpoints_protocol_and_time(environment):
+    app, client, owner, outsider, _ = environment
+    with app.state.sessions.begin() as db:
+        for user, token in [(owner, 'lab-network'), (outsider, 'other-network')]:
+            workspace = db.get(Membership, user).workspace_id
+            db.add(Source(workspace_id=workspace, name='Suricata', token_hash=token_hash(token)))
+
+    flow = {
+        'external_event_id': 'early-flow', 'event_type': 'NETWORK_FLOW',
+        'event_time': '2026-01-01T00:00:30Z', 'protocol': 'TCP',
+        'source_ip': '192.0.2.4', 'source_port': 51234,
+        'destination_ip': '198.51.100.8', 'destination_port': 22,
+        'raw_data': {'provenance': 'suricata_eve'},
+    }
+    alert = dict(flow, external_event_id='late-alert', event_type='SURICATA_ALERT',
+                 event_time='2026-01-01T00:02:30Z', signature_id=1234,
+                 signature='Fixture lab SSH alert', severity=3)
+
+    def send(token, *events):
+        return client.post('/api/events/batch', json={'events': list(events)}, headers={'X-Source-Token': token})
+
+    assert send('lab-network', flow).json() == {'accepted': 1, 'duplicates': 0}
+    assert ingest(client, batch()).json() == {'accepted': 5, 'duplicates': 0}
+    app.dependency_overrides[verified_user] = lambda: owner
+    incident, = client.get('/api/incidents').json()
+    path = '/api/incidents/' + incident['id']
+    assert [e['event_type'] for e in client.get(path).json()['related_network_events']] == ['NETWORK_FLOW']
+    assert send('other-network', alert).status_code == 200
+    assert send('lab-network', alert, dict(flow, external_event_id='wrong-port', destination_port=443),
+                dict(flow, external_event_id='old', event_time='2025-12-31T23:57:59Z'),
+                dict(flow, external_event_id='udp', protocol='UDP')).json() == {'accepted': 4, 'duplicates': 0}
+    assert send('lab-network', alert).json() == {'accepted': 0, 'duplicates': 1}
+    assert send('lab-network', dict(alert, severity=True)).status_code == 422
+
+    result = client.get(path).json()
+    assert len(result['events']) == 5
+    assert len(result['alerts']) == 1
+    related = result['related_network_events']
+    assert [e['event_type'] for e in related] == ['NETWORK_FLOW', 'SURICATA_ALERT']
+    assert related[1]['signature'] == alert['signature']
+    assert related[1]['source_name'] == 'Suricata'
+    assert len(client.get('/api/incidents').json()) == 1
+    assert [e['signature_id'] for e in client.get('/api/events/network').json() if e['event_type'] == 'SURICATA_ALERT'] == [1234]
+    app.dependency_overrides[verified_user] = lambda: outsider
+    assert client.get(path).status_code == 404
+
+
 def test_pipeline_evidence_and_retry_are_idempotent(environment):
     app, client, owner, *_ = environment
     app.dependency_overrides[verified_user] = lambda: owner

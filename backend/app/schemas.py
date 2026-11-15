@@ -42,8 +42,7 @@ class SecurityEvent(EventFields):
     username: str = Field(min_length=1, max_length=128)
 
 
-class NetworkFlow(EventFields):
-    event_type: Literal['NETWORK_FLOW']
+class NetworkRecord(EventFields):
     source_port: int = Field(strict=True, ge=1, le=65535)
     protocol: Literal['TCP', 'UDP']
 
@@ -55,9 +54,22 @@ class NetworkFlow(EventFields):
         return value
 
 
+class NetworkFlow(NetworkRecord):
+    event_type: Literal['NETWORK_FLOW']
+
+
+class SuricataAlert(NetworkRecord):
+    event_type: Literal['SURICATA_ALERT']
+    signature_id: int = Field(strict=True, ge=1, le=2**32 - 1)
+    signature: str = Field(min_length=1, max_length=256)
+    severity: int = Field(strict=True, ge=1, le=255)
+
+
 class EventBatch(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    events: list[Annotated[SecurityEvent | NetworkFlow, Field(discriminator='event_type')]] = Field(min_length=1, max_length=100)
+    events: list[Annotated[SecurityEvent | NetworkFlow | SuricataAlert, Field(discriminator='event_type')]] = Field(
+        min_length=1, max_length=100,
+    )
 
 
 class IncidentUpdate(BaseModel):

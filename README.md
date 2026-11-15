@@ -2,7 +2,7 @@
 
 AI-assisted Security Operations Center website, under active development.
 
-**Current state:** the hosted SOC ingests real OpenSSH authentication logs from an Ubuntu VM. The owner verified delivery to the hosted API and an incident with five linked failed-login records. The public demo and private analyst workspace are available at https://ai-soc-frontend-gamma.vercel.app/. The API is at https://ai-soc-api.onrender.com/. Suricata network telemetry is the next milestone.
+**Current state** — the owner confirmed the Ubuntu lab automatically forwards OpenSSH authentication events and Suricata SSH flow records to the hosted SOC. The frontend is at https://ai-soc-frontend-gamma.vercel.app/ and the API is at https://ai-soc-api.onrender.com/.
 
 Confirmed access model: a public demonstration and a private, authenticated analyst workspace. Project `ai-soc-dev` is in Mumbai. Local environment files are configured and must not be overwritten or printed. Budget and deadline have not been specified.
 

@@ -152,6 +152,8 @@ The owner verified API acknowledgements after installing the journal cursor fix.
 
 ## Phase 6: verify a Suricata flow
 
+Suricata 7.0.3 is configured on `enp0s3`. The owner completed this phase with `tmp/import-ubuntu-flow.ps1`. The Render API accepted one flow, and the private dashboard displayed TCP from `10.0.2.2:64620` to `10.0.2.15:22` at `2026-11-14 21:34:43.547Z` under `Ubuntu Suricata`. The manual import steps remain below for reference.
+
 The API and private dashboard support TCP/UDP flow metadata. This first check imports a single matching flow. Suricata EVE flow records include the timestamp, protocol, and both endpoints. See https://docs.suricata.io/en/suricata-7.0.14/output/eve/eve-json-format.html#event-type-flow.
 
 In Ubuntu, install Suricata if needed and confirm that it captures the NAT interface shown by `ip -4 -brief address`. Check that EVE flow output is enabled in its configuration, then validate and start the sensor.
@@ -180,3 +182,35 @@ sudo python3 ~/suricata_eve.py /var/log/suricata/eve.json \
 After the API supports `NETWORK_FLOW`, create a separate `Ubuntu Suricata` source in the private dashboard. Repeat the preview command with `--api-url https://ai-soc-api.onrender.com` and enter the source token at the hidden prompt. Acknowledge success with `{"accepted": 1, "duplicates": 0}`. Reimporting the same flow with the same source returns a duplicate acknowledgement.
 
 In **Network events**, compare the row's UTC timestamp, source IP and port, destination IP and port, and protocol against the preview. The existing brute-force rule operates on failed authentication records. A regular network flow is displayed as telemetry.
+
+## Phase 7: enable automatic Suricata forwarding
+
+The forwarder tails `/var/log/suricata/eve.json` and sends TCP flows from `10.0.2.2` to `10.0.2.15:22`. On its first run it starts at the current end of the file. Later starts resume the saved position. This filter limits the first rollout to the established lab traffic and excludes HTTPS delivery traffic.
+
+From Windows PowerShell in the project folder, copy the files and start an interactive SSH session.
+
+```powershell
+scp -P 2222 collector/suricata_forwarder.py collector/suricata_eve.py collector/ssh_journal.py collector/ai-soc-suricata.service collector/install-suricata-forwarder.sh aisoc@127.0.0.1:~/
+ssh -p 2222 aisoc@127.0.0.1
+```
+
+In Ubuntu, run the installer. If it reports that `setfacl` is missing, run `sudo apt install acl` and retry.
+
+```bash
+sudo bash ~/install-suricata-forwarder.sh
+sudo journalctl -u ai-soc-suricata.service -n 30 --no-pager
+```
+
+At the hidden prompt, enter the existing **Ubuntu Suricata** telemetry source token. If it is unavailable, create a fresh Suricata source in the private dashboard and enter that token. The installer stores it separately from the SSH journal collector's credential. It grants the dedicated service group read access to the active EVE file and inherited access to newly created Suricata log files. The unit loads the token using systemd credentials. https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#LoadCredential=
+
+After the service is active, open and close a new ordinary SSH session. Wait for Suricata to emit its flow record. Check for `API acknowledged … Suricata events` (older builds say `Suricata flows`), then find the new timestamp and source port in **Network events**. Restart `ai-soc-suricata.service` and repeat with a fresh session to verify that collection resumes. Keep the existing source and SQLite state for restart testing. Reusing the source also lets the API deduplicate a flow previously sent by the manual importer.
+
+The forwarder holds up to 5,000 pending flows on disk and retries unacknowledged batches. For rename-based rotation, retain the previous uncompressed EVE file in the same directory until the collector reads it. The collector drains that file and then reads the current EVE file. Multiple rotations while stopped can leave intervening files unprocessed. If the checkpointed file is missing or was truncated, the service logs the problem and keeps queued deliveries and the checkpoint. Check the EVE file and rotation configuration before changing the checkpoint.
+
+## Phase 8: forward alerts and inspect incident context
+
+Update the guest after the hosted API accepts `SURICATA_ALERT`. From Windows, repeat the file copy in phase 7. In Ubuntu, rerun `sudo bash ~/install-suricata-forwarder.sh`. The installer reuses the source credential and configuration and restarts the service with its existing SQLite state.
+
+Check that Suricata's EVE output includes the `alert` type. Look for a matching alert already observed by the lab sensor or let the service run until one occurs. The forwarder uses the existing lab TCP endpoint filter for both flows and alerts. **Network events** shows the signature name, ID, and sensor severity when a matching alert arrives.
+
+Open a failed-login incident and refresh it. The timeline shows up to 50 related TCP flows and Suricata alerts from the same workspace that match the source IP, destination IP and port. The search starts two minutes before the first linked failure and ends two minutes after the last. The match provides context because several sessions can share a NAT address. Existing stored flows can appear immediately when they match. Alerts written before the guest update and already passed by the saved checkpoint require a separate backfill if needed.

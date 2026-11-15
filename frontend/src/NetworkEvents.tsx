@@ -1,20 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
-
-type NetworkEvent = {
-  id: string
-  event_time: string
-  source_ip: string
-  source_port: number
-  destination_ip: string
-  destination_port: number
-  protocol: 'TCP' | 'UDP'
-  source_name: string
-}
-
-function address(ip: string, port: number) {
-  return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`
-}
+import { networkAddress, type NetworkEvent } from './types'
 
 export function NetworkEvents({ sessionKey, refreshKey }: { sessionKey: string; refreshKey: number }) {
   const [events, setEvents] = useState<NetworkEvent[]>([])
@@ -35,14 +21,17 @@ export function NetworkEvents({ sessionKey, refreshKey }: { sessionKey: string; 
   }, [sessionKey, refreshKey])
 
   return <section className="panel">
-    <div className="panel-heading"><div><h2>Recent network flows</h2><p>TCP and UDP connection records received from Suricata.</p></div></div>
+    <div className="panel-heading"><div><h2>Recent Suricata events</h2></div></div>
     {status && <div className="empty" role="status">{status}</div>}
     {events.length > 0 && <div className="table-wrap"><table>
-      <thead><tr><th>UTC Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Collector</th></tr></thead>
+      <thead><tr><th>UTC Time</th><th>Event</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Collector</th></tr></thead>
       <tbody>{events.map(event => <tr key={event.id}>
         <td><time dateTime={event.event_time}>{new Date(event.event_time).toISOString().replace('T', ' ')}</time></td>
-        <td>{address(event.source_ip, event.source_port)}</td>
-        <td>{address(event.destination_ip, event.destination_port)}</td>
+        <td>{event.event_type === 'SURICATA_ALERT'
+          ? <>{event.signature}<br/><span className="muted">Signature {event.signature_id} · Suricata severity {event.severity}</span></>
+          : 'Network flow'}</td>
+        <td>{networkAddress(event.source_ip, event.source_port)}</td>
+        <td>{networkAddress(event.destination_ip, event.destination_port)}</td>
         <td>{event.protocol}</td><td>{event.source_name}</td>
       </tr>)}</tbody>
     </table></div>}

@@ -1,0 +1,23 @@
+[Unit]
+Description=AI SOC Suricata flow forwarder
+After=network-online.target suricata.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/ai-soc/suricata/suricata_forwarder.py
+DynamicUser=yes
+SupplementaryGroups=ai-soc-eve
+StateDirectory=ai-soc-suricata
+StateDirectoryMode=0700
+EnvironmentFile=/etc/ai-soc/suricata-forwarder.conf
+LoadCredential=source-token:/etc/ai-soc/suricata-source-token
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,10 @@ from .config import Settings
 from .database import database
 from .detection import detect_brute_force
 from .models import Alert, AlertEvent, Audit, Event, Incident, Membership, Source, now
-from .schemas import EventBatch, IncidentUpdate, NetworkFlow, SourceCreate
+from .schemas import EventBatch, IncidentUpdate, NetworkRecord, SourceCreate, SuricataAlert
+
+
+NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
 
 
 def token_hash(token):
@@ -39,6 +43,49 @@ def incident_json(incident):
     return {name: getattr(incident, name) for name in (
         'id', 'title', 'status', 'severity', 'risk_score', 'score_components'
     )} | {'created_at': iso(incident.created_at), 'updated_at': iso(incident.updated_at)}
+
+
+def network_event_json(event, source_name):
+    fields = {
+        'id': event.id, 'event_time': event.event_time.isoformat() + 'Z',
+        'event_type': event.event_type, 'source_name': source_name,
+        'source_ip': event.source_ip, 'source_port': event.raw_data['source_port'],
+        'destination_ip': event.destination_ip, 'destination_port': event.destination_port,
+        'protocol': event.raw_data['protocol'],
+    }
+    if event.event_type == 'SURICATA_ALERT':
+        fields.update({name: event.raw_data[name] for name in ('signature_id', 'signature', 'severity')})
+    return fields
+
+
+def network_query(workspace_id):
+    return (
+        select(Event, Source.name)
+        .join(Source, (Source.id == Event.source_id) & (Source.workspace_id == Event.workspace_id))
+        .where(Event.workspace_id == workspace_id, Event.event_type.in_(NETWORK_TYPES))
+    )
+
+
+def related_network_events(session, workspace_id, evidence):
+    failures = [event for event in evidence if event.event_type == 'LOGIN_FAILED']
+    if not failures:
+        return []
+    # All contributing failures for this rule share the same network endpoints.
+    first, last = failures[0], failures[-1]
+    window = timedelta(minutes=2)
+    rows = session.execute(
+        network_query(workspace_id)
+        .where(
+            Event.source_ip == first.source_ip,
+            Event.destination_ip == first.destination_ip,
+            Event.destination_port == first.destination_port,
+            Event.raw_data['protocol'].as_string() == 'TCP',
+            Event.event_time.between(first.event_time - window, last.event_time + window),
+        )
+        .order_by(Event.event_time, Event.id)
+        .limit(50)
+    )
+    return [network_event_json(event, source_name) for event, source_name in rows]
 
 
 class BodyLimit:
@@ -111,9 +158,12 @@ def create_app(settings=None):
                 duplicates += 1
                 continue
             fields = payload.model_dump()
-            if isinstance(payload, NetworkFlow):
-                # Reuse the event table's JSON column for fields specific to network flows.
-                fields['raw_data'] |= {'source_port': fields.pop('source_port'), 'protocol': fields.pop('protocol')}
+            if isinstance(payload, NetworkRecord):
+                metadata = ['source_port', 'protocol']
+                if isinstance(payload, SuricataAlert):
+                    metadata.extend(('signature_id', 'signature', 'severity'))
+                for name in metadata:
+                    fields['raw_data'][name] = fields.pop(name)
                 fields['username'] = ''
             event = Event(workspace_id=source.workspace_id, source_id=source.id, **fields)
             session.add(event)
@@ -140,18 +190,11 @@ def create_app(settings=None):
     @api.get('/api/events/network')
     def network_events(identity=Depends(member), session=Depends(session_dependency), limit: int = Query(25, ge=1, le=100)):
         rows = session.execute(
-            select(Event, Source.name)
-            .join(Source, (Source.id == Event.source_id) & (Source.workspace_id == Event.workspace_id))
-            .where(Event.workspace_id == identity.workspace_id, Event.event_type == 'NETWORK_FLOW')
+            network_query(identity.workspace_id)
             .order_by(Event.event_time.desc(), Event.id)
             .limit(limit)
         )
-        return [{
-            'id': event.id, 'event_time': event.event_time.isoformat() + 'Z',
-            'source_ip': event.source_ip, 'source_port': event.raw_data['source_port'],
-            'destination_ip': event.destination_ip, 'destination_port': event.destination_port,
-            'protocol': event.raw_data['protocol'], 'source_name': source_name,
-        } for event, source_name in rows]
+        return [network_event_json(event, source_name) for event, source_name in rows]
 
     def authorized_incident(session, identity, incident_id):
         incident = session.scalar(select(Incident).where(Incident.id == incident_id, Incident.workspace_id == identity.workspace_id))
@@ -164,11 +207,12 @@ def create_app(settings=None):
         incident = authorized_incident(session, identity, incident_id)
         alerts = list(session.scalars(select(Alert).where(Alert.incident_id == incident.id)))
         evidence = session.scalars(select(Event).join(AlertEvent, AlertEvent.event_id == Event.id).join(Alert, Alert.id == AlertEvent.alert_id).where(
-            Alert.incident_id == incident.id, Event.workspace_id == identity.workspace_id).order_by(Event.event_time, Event.id)).unique()
+            Alert.incident_id == incident.id, Event.workspace_id == identity.workspace_id).order_by(Event.event_time, Event.id)).unique().all()
         return incident_json(incident) | {
             'alerts': [{'id': a.id, 'rule_key': a.rule_key, 'explanation': a.explanation} for a in alerts],
             'events': [{'id': e.id, 'event_time': iso(e.event_time), 'event_type': e.event_type, 'username': e.username,
                         'source_ip': e.source_ip, 'destination_ip': e.destination_ip, 'destination_port': e.destination_port} for e in evidence],
+            'related_network_events': related_network_events(session, identity.workspace_id, evidence),
         }
 
     @api.patch('/api/incidents/{incident_id}')

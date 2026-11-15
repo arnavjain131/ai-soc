@@ -1,6 +1,6 @@
 # Current checkpoint
 
-Updated 15 November 2026 after the owner verified live SSH telemetry. Keep credentials in ignored local configuration.
+Updated 16 November 2026 after the owner confirmed automatic Suricata forwarding. Keep credentials in ignored local configuration.
 
 ## Infrastructure
 
@@ -69,10 +69,14 @@ The source was pushed successfully to https://github.com/arnavjain131/ai-soc on 
 
 API `/health/live` and `/health/ready` returned 200, anonymous `/api/incidents` returned 401, and CORS and the authenticated-request preflight allowed the Vercel origin. The owner confirmed hosted login and subsequently verified live ingestion. Persistence across a hosted redeploy still needs verification.
 
-Next implementation milestone: add Suricata EVE JSON normalization and verify network event delivery. Broader detection, correlation, RAG/AI, and ML scope follow.
+The owner confirmed automatic Suricata forwarding on Ubuntu. The next release adds Suricata alert ingestion and shows related network records on failed-login incident timelines. The guest forwarder must be updated after the hosted API deploys. See phase 8 of the Ubuntu lab guide for live verification. RAG/AI and ML scope follow.
 
 ## Completed: hosted SSH telemetry
 
 The owner confirmed that `AI-SOC-Ubuntu` runs Ubuntu Server 24.04.5 LTS with 3 GB RAM, 2 CPUs, and a 25 GB dynamic disk. VirtualBox NAT forwards `127.0.0.1:2222` to guest SSH port 22. The guest clock is synchronized in Asia/Kolkata.
 
 The owner installed `ai-soc-ssh.service`, transferred the journal cursor fix to Ubuntu, and verified API acknowledgements from Render. The deployed SOC opened **Possible brute force against soc-lab-test** with five linked `LOGIN_FAILED` records from `10.0.2.2` to `10.0.2.15:22`. The earlier synthetic `demo-admin` incident stayed separate. At verification the dashboard showed 18 events, 2 alerts, and 2 open incidents.
+
+## Completed: Suricata flow import
+
+The owner validated and enabled Suricata 7.0.3 on `AI-SOC-Ubuntu`, with AF-PACKET on `enp0s3` and Emerging Threats rules installed. The owner manually imported a captured SSH flow into the Render API at commit `b8504af`, which returned `{"accepted": 1, "duplicates": 0}`. The private Network events view on Vercel displayed `2026-11-14 21:34:43.547Z`, TCP, `10.0.2.2:64620` to `10.0.2.15:22`, collector `Ubuntu Suricata`. The SSH journal service continues to deliver authentication events independently.
