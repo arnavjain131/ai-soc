@@ -1,0 +1,20 @@
+.source-health { margin-bottom: 24px; }
+.source-health.needs-review { border-color: #80623e; }
+.source-health-counts { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 22px 16px; }
+.freshness-badge { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #42506a; border-radius: 5px; padding: 5px 9px; font-size: 11px; color: #bfcada; }
+.freshness-badge.recent { color: #adebd5; background: #a2e6cb0d; border-color: #486f60; }
+.freshness-badge.stale, .freshness-badge.unknown { color: #f1c58e; background: #d8884c12; border-color: #80623e; }
+.freshness-badge.never, .freshness-badge.revoked, .freshness-badge.fixture { color: #a5b3c7; background: #182232; }
+.source-health-help, .source-health-notice { padding: 0 22px 16px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.source-health-notice { color: #f1c58e; }
+.source-row .source-status { margin-left: auto; text-align: right; min-width: 0; }
+.source-status time, .source-utc { display: block; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.source-utc { color: var(--muted); }
+.source-row .source-identity { min-width: 0; overflow-wrap: anywhere; }
+@media(max-width:560px) {
+  .source-health-counts { padding-inline: 16px; }
+  .source-health-help, .source-health-notice { padding-inline: 16px; }
+  .source-review { font-size: 11px; padding: 9px; }
+  .source-row { flex-wrap: wrap; align-items: flex-start; }
+  .source-row .source-status { flex-basis: 100%; text-align: left; margin-left: 0; }
+}
