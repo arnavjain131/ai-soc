@@ -14,10 +14,11 @@ from .database import database
 from .detection import evaluate_event
 from .models import Alert, AlertEvent, Audit, Event, Incident, Membership, Source, now
 from .schemas import EventBatch, IncidentUpdate, NetworkRecord, SourceCreate, SuricataAlert
+from .security_events import install_security_event_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.2.0'
+API_VERSION = '0.3.0'
 
 
 def token_hash(token):
@@ -270,6 +271,7 @@ def create_app(settings=None):
         session.commit()
         return {'revoked': True}
 
+    install_security_event_routes(api, member, session_dependency)
     return api
 
 
