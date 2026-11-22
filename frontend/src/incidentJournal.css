@@ -1,0 +1,15 @@
+.incident-journal { display: grid; gap: 22px; margin-top: 22px; }
+.journal-note-form { padding: 0 22px 22px; }
+.journal-note-form label { display: block; font-size: 12px; margin-bottom: 10px; color: #afbed1; }
+.journal-note-form textarea { display: block; width: 100%; min-height: 110px; resize: vertical; background: #0d1521; color: #dce3ed; border: 1px solid #34445a; border-radius: 5px; padding: 12px; font: inherit; line-height: 1.7; }
+.journal-note-form textarea:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+.journal-form-actions { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 11px; }
+.journal-success { color: var(--mint); font-size: 12px; line-height: 1.8; margin-top: 12px; }
+.journal-feedback { padding: 0 22px 22px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.journal-entries { list-style: none; margin: 0; padding: 0; }
+.journal-entries li { padding: 20px 22px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.8; }
+.journal-entry-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 20px; color: var(--muted); margin-bottom: 8px; font-size: 11px; }
+.journal-note-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.journal-pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 20px 22px; font-size: 11px; }
+.incident-journal .secondary { font-size: 12px; }
+@media(max-width:560px) { .journal-note-form, .journal-feedback, .journal-entries li, .journal-pagination { padding-inline: 16px; } }

@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js'
 import { api, supabase } from './api'
 import { NetworkEvents } from './NetworkEvents'
 import { SecurityEvents } from './SecurityEvents'
+import { IncidentJournal } from './IncidentJournal'
 import { SourceHealth, SourceStatus } from './TelemetryHealth'
 import { demoIncidents, demoSources, demoStats } from './demo'
 import type { Detail, Incident, IncidentStatus, Source, Stats } from './types'
@@ -55,6 +56,7 @@ function App() {
   const [incidents, setIncidents] = useState<Incident[]>(demoIncidents)
   const [stats, setStats] = useState<Stats>(demoStats), [sources, setSources] = useState<Source[]>(demoSources)
   const [detail, setDetail] = useState<Detail | null>(null)
+  const [journalRefresh, setJournalRefresh] = useState(0)
   const [search, setSearch] = useState(''), [status, setStatus] = useState('all')
   const [tab, setTab] = useState<'overview' | 'incidents' | 'sources' | 'network' | 'events'>('overview')
   const [networkRefresh, setNetworkRefresh] = useState(0)
@@ -120,7 +122,7 @@ function App() {
     setError(''); setBusy(true)
     try {
       const next = mode === 'demo' ? demoIncidents.find(i => i.id === item.id)! : await api<Detail>(`/api/incidents/${item.id}`)
-      if (boundaryRef.current === requestedBoundary) setDetail(next)
+      if (boundaryRef.current === requestedBoundary) { setDetail(next); setJournalRefresh(value => value + 1) }
     }
     catch (e) { if (boundaryRef.current === requestedBoundary) setError(e instanceof Error ? e.message : 'Could not open incident.') }
     finally { if (boundaryRef.current === requestedBoundary) setBusy(false) }
@@ -135,7 +137,7 @@ function App() {
       await api(`/api/incidents/${detail.id}`, 'PATCH', { status: value })
       const updated = await api<Detail>(`/api/incidents/${detail.id}`)
       if (boundaryRef.current !== requestedBoundary) return
-      setDetail(updated); await refresh()
+      setDetail(updated); setJournalRefresh(value => value + 1); await refresh()
       if (boundaryRef.current !== requestedBoundary) return
       setNotice('Disposition saved to the audit trail.')
     } catch (e) { if (boundaryRef.current === requestedBoundary) setError(e instanceof Error ? e.message : 'Could not update incident.') }
@@ -195,6 +197,7 @@ function App() {
               <section className="panel"><div className="panel-heading"><h2>Detection rationale</h2></div>{detail.alerts.map(alert => <div className="rationale" key={alert.id}><code>{alert.rule_key}</code><p>{alert.explanation}</p></div>)}</section>
               <section className="panel disposition"><h2>Analyst disposition</h2><label htmlFor="disposition">Incident status</label><select id="disposition" value={detail.status} disabled={busy || ['closed', 'false_positive'].includes(detail.status)} onChange={e => void changeStatus(e.target.value as IncidentStatus)}>{['open', 'investigating', 'closed', 'false_positive'].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select></section></div>
             </div>
+            {mode === 'private' && <IncidentJournal key={`${boundary}:${detail.id}`} incidentId={detail.id} viewerId={session?.user.id} refreshKey={`${detail.updated_at}:${detail.status}:${journalRefresh}`}/>}
           </> : tab === 'events' && mode === 'private' ? <SecurityEvents key={boundary} sessionKey={boundary} refreshKey={eventsRefresh} sources={sources}/> : tab === 'network' && mode === 'private' ? <NetworkEvents key={boundary} sessionKey={boundary} refreshKey={networkRefresh}/> : tab === 'sources' ? <section className="panel"><div className="panel-heading"><h2>Registered sources</h2><span className="muted small">{sources.length} sources</span></div>{mode === 'private' && role === 'admin' && <div className="source-create"><form onSubmit={createSource}><label htmlFor="source-name">Add a telemetry source</label><div><input id="source-name" placeholder="e.g. Authentication lab" required maxLength={100} value={sourceName} onChange={e => setSourceName(e.target.value)}/><button className="primary" disabled={busy || !sourceName.trim()}>Create source</button></div></form>{sourceToken && <div className="source-secret"><strong>Save this source token now</strong><p>It is displayed once. Keep it private and use it only in your collector or local smoke test.</p><textarea aria-label="New source token" readOnly value={sourceToken}/><button className="secondary" onClick={() => setSourceToken('')}>Hide token</button></div>}</div>}{sources.length ? sources.map(source => <div className="source-row" key={source.id}><span className="source-icon"><Terminal size={20}/></span><div className="source-identity"><strong>{source.name}</strong></div><SourceStatus source={source} now={sourceNow} demo={mode === 'demo'}/></div>) : <div className="empty"><Radio/><p>No sources yet. An administrator can create one in this view.</p></div>}</section> : <>
             <div className="metrics">{[
               { label: 'Open incidents', value: stats.open_incidents, icon: ShieldAlert, note: 'Awaiting analyst review', accent: 'orange' },
