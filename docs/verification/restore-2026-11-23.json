@@ -1,0 +1,23 @@
+{
+  "counts": {
+    "soc_workspaces": 1,
+    "soc_memberships": 1,
+    "soc_sources": 4,
+    "soc_events": 157,
+    "soc_incidents": 5,
+    "soc_alerts": 5,
+    "soc_alert_events": 28,
+    "soc_audit_logs": 4,
+    "soc_schema_migrations": 1
+  },
+  "server_version": "17.12",
+  "server_major": 17,
+  "schema_version": 1,
+  "rls_enabled": true,
+  "database": "ai_soc_restore_test",
+  "listen_address": "127.0.0.1",
+  "latest_lab_incident_present": true,
+  "checked_at_utc": "2026-11-22T23:45:03.628198+00:00",
+  "verification": "Native restore success shared by owner; restored inventory independently checked read-only.",
+  "scope": "Nine application tables only; excludes Supabase Auth, Storage, provider settings and collector state."
+}

@@ -2,7 +2,11 @@
 
 Updated 23 November 2026. Keep credentials in ignored local configuration.
 
-## Reliability work: first encrypted backup verified; restore drill pending
+## Reliability work: encrypted backup and isolated restore verified
+
+The owner completed the native restore check and shared its success output. An independent read-only inspection of the restored local database confirmed all nine table counts, schema version 1, RLS enabled, and the latest real-lab incident present. The recovered data includes 157 events, 5 incidents, 5 alerts, 28 evidence links and 4 audit entries. Metadata is saved in `docs/verification/restore-2026-11-23.json`. The local lab server was then cleanly stopped; recovered files and the encrypted archive remain preserved. The nine-table application recovery drill is complete; full Supabase/provider/collector recovery and an independently stored archive copy remain separate work. API limits are the next fundamental milestone.
+
+Preparation history (superseded by the successful restore above):
 
 The owner installed PostgreSQL 17.12 client tools. The agent verified both client versions and the live read-only preflight. The owner then created the first encrypted archive and shared terminal output confirming successful decryption/authentication, SHA-256 checksum and native table-of-contents verification. Archive creation time was 2026-11-22T23:30:27.378936Z (23 November 05:00:27 IST); its manifest includes the same nine-table counts listed below. No passphrase was disclosed. This completes archive creation/verification, not recovery testing. Keep an independently protected encrypted copy and the passphrase separately.
 
@@ -58,7 +62,7 @@ Implemented rules: brute force (5 matching failed logins / 120 seconds), passwor
 
 Latest confirmed live incident: **Possible brute force against soc-lab-test**, `0501d95b-b053-41d0-995d-1d53fa1f6ca9`, 22 November 05:14 IST, Open / High / 50 out of 100, 5 linked genuine failed logins and 7 related Suricata flows in the hosted Evidence timeline. The five failures span 19.416 seconds. Correlation is workspace/endpoints/protocol/time based; it does not establish one-to-one session attribution behind NAT. Last observed dashboard snapshot: 5 incidents, 5 alerts, 157 security records and 4 sources; these are a checkpoint, not permanently current counts.
 
-The agreed **Security Events** page and incident notes/audit panels are implemented and deployed as recorded above. The owner supplied a screenshot of the Security Events table. Next work is backup/recovery and API limits; the known-record deployment-persistence check is now complete, while a native restore drill remains pending. Queue depth and guest service status are not yet reported to the dashboard. No more failed-login or port-scan tests are needed merely to re-establish completed milestones.
+The agreed **Security Events** page and incident notes/audit panels are implemented and deployed as recorded above. The owner supplied a screenshot of the Security Events table. Next work is backup/recovery and API limits; the known-record deployment-persistence check is now complete, and the isolated native application-table restore drill is now complete. Queue depth and guest service status are not yet reported to the dashboard. No more failed-login or port-scan tests are needed merely to re-establish completed milestones.
 
 AI/explanations remain explicitly deferred. A deterministic explanation draft exists locally; it is disconnected from the frontend and its backend changes are unpublished. No LLM/RAG/ML integration is complete and no AI key is needed for the next milestone.
 

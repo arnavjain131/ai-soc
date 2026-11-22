@@ -10,7 +10,7 @@ Supabase Auth users, Storage files, project settings, database roles/ACL ownersh
 
 The tool uses `pg_dump` and an exported repeatable-read snapshot so the manifest counts and dump share one database view. Dump bytes are packaged and encrypted in memory with AES-256-GCM and an Argon2id-derived passphrase key (16-byte random salt, 12-byte random nonce, 64 MiB KDF memory, three passes, four lanes). Plaintext dump files are not written by this tool. Version 1 supports archives up to 64 MiB and rejects larger source relations before capture. Use a reviewed streaming workflow when the project outgrows this limit.
 
-As of 23 November, PostgreSQL 17.12 clients and the live read-only inventory passed verification. The owner created the first native encrypted application archive and shared successful verification output, including all nine manifest counts. No real restore drill has passed yet. Mocked restore tests and archive inspection are not substitutes for that drill.
+As of 23 November, PostgreSQL 17.12 clients and the live read-only inventory passed verification. The owner created the first native encrypted application archive and shared successful verification output, including all nine manifest counts. The owner also completed the native local restore successfully. Independent read-only checks confirmed all nine counts, schema version 1, RLS and the latest lab incident. The local server was cleanly stopped with recovered data retained. The metadata-only result is in `docs/verification/restore-2026-11-23.json`.
 
 ## Local prerequisites
 
@@ -51,7 +51,7 @@ This step needs a separate local PostgreSQL server and an explicitly prepared em
 
 The Windows Command Line Tools selection can include server executables while omitting required server support files such as `share/postgres.bki`. Their presence alone is insufficient. EDB documents an `--extract-only 1` installer option to unpack a separate complete distribution without performing an installation; use a separate directory and verify the installer signature. Never point `initdb` at an existing database directory.
 
-On this owner's PC the isolated target is now prepared and verified empty: PostgreSQL 17.12, `127.0.0.1:55432`, database `ai_soc_restore_test`. The extracted distribution is `%LOCALAPPDATA%\AI-SOC\postgresql-17-lab`; its active data directory is `%LOCALAPPDATA%\AI-SOC\restore-lab-17-verified\data`. SCRAM authentication and a restricted private `.env.restore` are configured. Do not recreate the target or overwrite this file. No restore has run yet. After the drill, stop this specific lab server in PowerShell:
+On this owner's PC the isolated target was prepared empty and has now been successfully restored: PostgreSQL 17.12, `127.0.0.1:55432`, database `ai_soc_restore_test`. The extracted distribution is `%LOCALAPPDATA%\AI-SOC\postgresql-17-lab`; its active data directory is `%LOCALAPPDATA%\AI-SOC\restore-lab-17-verified\data`. SCRAM authentication and a restricted private `.env.restore` are configured. Do not recreate the target or overwrite this file. The restored target is no longer empty; do not repeat the restore into it. It is currently stopped. Stop this specific lab server after future read-only review in PowerShell:
 
 ```powershell
 & "$env:LOCALAPPDATA\AI-SOC\postgresql-17-lab\bin\pg_ctl.exe" -D "$env:LOCALAPPDATA\AI-SOC\restore-lab-17-verified\data" -m fast -w stop
