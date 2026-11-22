@@ -1,4 +1,5 @@
 import hashlib
+import asyncio
 import secrets
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -16,10 +17,11 @@ from .models import Alert, AlertEvent, Audit, Event, Incident, Membership, Sourc
 from .schemas import EventBatch, IncidentUpdate, NetworkRecord, SourceCreate, SuricataAlert
 from .security_events import install_security_event_routes
 from .incident_journal import install_incident_journal_routes
+from .request_limits import Admission, RequestProtection
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.4.0'
+API_VERSION = '0.5.0'
 
 
 def token_hash(token):
@@ -96,19 +98,26 @@ class BodyLimit:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope['type'] != 'http':
+        if scope['type'] != 'http' or (scope['path'] == '/health/live' and scope['method'] == 'GET'):
             return await self.app(scope, receive, send)
-        chunks, size = [], 0
+        body = bytearray()
+        deadline = asyncio.get_running_loop().time() + 15
         while True:
-            message = await receive()
+            try:
+                message = await asyncio.wait_for(receive(), timeout=max(0, deadline - asyncio.get_running_loop().time()))
+            except TimeoutError:
+                return await JSONResponse({'detail': 'Request body timed out'}, status_code=408)(scope, receive, send)
             if message['type'] == 'http.disconnect':
                 return
-            size += len(message.get('body', b''))
-            if size > 1048576:
+            chunk = message.get('body', b'')
+            if len(body) + len(chunk) > 1048576:
                 return await JSONResponse({'detail': 'Request exceeds 1 MiB'}, status_code=413)(scope, receive, send)
-            chunks.append(message)
+            body.extend(chunk)
             if not message.get('more_body', False):
                 break
+        # Keep one bounded buffer rather than retaining an object for each tiny
+        # incoming chunk. This also bounds overhead for empty/chopped uploads.
+        chunks = [{'type': 'http.request', 'body': bytes(body), 'more_body': False}]
         async def replay():
             return chunks.pop(0) if chunks else await receive()
         await self.app(scope, replay, send)
@@ -126,9 +135,12 @@ def create_app(settings=None):
 
     api = FastAPI(title='AI SOC API', version=API_VERSION, lifespan=lifespan)
     api.state.settings, api.state.engine, api.state.sessions = settings, engine, sessions
+    api.state.admission = Admission(settings)
     api.add_middleware(BodyLimit)
+    api.add_middleware(RequestProtection, admission=api.state.admission)
     api.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.origins.split(',')],
-                       allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'])
+                       allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'],
+                       expose_headers=['Retry-After'])
 
     @api.get('/health/live')
     def live():

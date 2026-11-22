@@ -2,6 +2,14 @@
 
 Updated 23 November 2026. Keep credentials in ignored local configuration.
 
+## Prepared locally: API request protection (deployment pending)
+
+API 0.5.0 adds bounded process-local token buckets before body parsing/auth/database work. Dashboard and collector ingestion have independent per-credential and aggregate budgets; rotating invalid credentials cannot bypass the aggregate budget. Credential hashes, not plaintext tokens, are retained in a maximum 2,048-entry idle-reclaimed map. Defaults are 120 requests/minute with burst 30 per supplied credential, 600/minute with burst 120 per aggregate, 30/minute for anonymous requests, readiness 60/minute with burst 10, and 16 total protected in-flight requests. HTTP 429 includes Retry-After and CORS exposure. Body buffering retains the 1 MiB bound and now has a 15-second total deadline. GET liveness and CORS preflight remain lightweight.
+
+No schema/auth/token/collector/checkpoint/detection changes were made. Limits do not depend on forwarding headers. The existing single-process deployment needs no external service or new environment values; state resets on restart and multiple workers/instances require shared enforcement. This is admission control, not network DDoS protection or a tested capacity guarantee. See `docs/API_PROTECTION.md` for configuration, limitations and rollout checks. Collector tests explicitly prove HTTP 429 retains both queues/checkpoints until a valid acknowledgement.
+
+Validation: 79 backend tests and 23 collector tests passed. New cases cover pre-auth rejection, aggregate limits across rotating credentials, separate ingestion budgets, refill, bounded credential storage/reclamation, oversized authentication headers, readiness/preflight/liveness behavior, concurrency release after exceptions, chunked payload bounds, single-buffer replay of fragmented uploads and body deadlines. Test credentials and databases are synthetic; no production load test, telemetry or private-record modification was performed. Deployment remains pending on the manual Render service; frontend changes are unnecessary.
+
 ## Reliability work: encrypted backup and isolated restore verified
 
 The owner completed the native restore check and shared its success output. An independent read-only inspection of the restored local database confirmed all nine table counts, schema version 1, RLS enabled, and the latest real-lab incident present. The recovered data includes 157 events, 5 incidents, 5 alerts, 28 evidence links and 4 audit entries. Metadata is saved in `docs/verification/restore-2026-11-23.json`. The local lab server was then cleanly stopped; recovered files and the encrypted archive remain preserved. The nine-table application recovery drill is complete; full Supabase/provider/collector recovery and an independently stored archive copy remain separate work. API limits are the next fundamental milestone.
