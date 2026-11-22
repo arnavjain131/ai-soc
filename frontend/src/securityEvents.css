@@ -1,0 +1,25 @@
+.security-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 0 22px 22px; }
+.security-filters label, .security-pagination label { display: grid; gap: 8px; font-size: 12px; color: #a8b6cb; min-width: 0; }
+.security-filters input, .security-filters select { width: 100%; min-width: 0; background: #0d1521; color: #dce3ed; border: 1px solid #34445a; border-radius: 5px; padding: 10px; font: inherit; }
+.security-filter-actions { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.security-events .secondary { font-size: 12px; }
+.security-feedback { padding: 0 22px 18px; font-size: 12px; line-height: 1.8; }
+.security-pagination { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 16px; padding: 22px; font-size: 12px; }
+.security-pagination label { display: flex; align-items: center; }
+.security-events td { max-width: 270px; overflow-wrap: anywhere; white-space: normal; }
+.auth-outcome.failed { color: #f1b9bb; }
+.auth-outcome.succeeded { color: var(--mint); }
+.security-event-detail { margin: 0 22px 22px; background: #0d1521; border: 1px solid #34445a; border-radius: 7px; }
+.security-event-detail h3 { font-size: 14px; scroll-margin-top: 24px; }
+.security-event-detail dl { margin: 0; padding: 0 22px 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.security-event-detail dt { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+.security-event-detail dd { margin: 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+@media(max-width:1000px) { .security-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width:560px) {
+  nav.mobile-nav { flex-wrap: wrap; }
+  nav.mobile-nav button { flex: 1 1 calc(33.333% - 8px); min-width: 0; }
+  .security-filters { grid-template-columns: minmax(0, 1fr); padding-inline: 16px; }
+  .security-event-detail { margin-inline: 16px; }
+  .security-event-detail dl { grid-template-columns: minmax(0, 1fr); }
+  .security-pagination { justify-content: flex-start; padding: 16px; gap: 12px; }
+}
