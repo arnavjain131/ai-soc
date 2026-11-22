@@ -1,12 +1,14 @@
 """Queue and forward TCP flows and alerts from the lab's Suricata EVE log."""
 
 import hashlib
+import gzip
 import json
 import logging
 import os
 import re
 import sqlite3
 import time
+import zlib
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
@@ -28,6 +30,11 @@ MAX_LINE = 1024 * 1024
 SCAN_LIMIT = 250
 ANCHOR_SIZE = 128
 SSH_PORTS = frozenset({22})
+MAX_GZIP_BYTES = 128 * 1024 * 1024
+
+
+class MissingCheckpointFile(RuntimeError):
+    pass
 
 
 def parse_ports(value):
@@ -67,9 +74,53 @@ def save_position(db, stream, offset):
     ))
 
 
+def checkpoint_matches(stream, offset, anchor):
+    start = max(0, offset - ANCHOR_SIZE)
+    stream.seek(start)
+    data = stream.read(offset - start)
+    return len(data) == offset - start and hashlib.sha256(data).digest() == anchor
+
+
+def open_eve_file(path):
+    if path.suffix != '.gz':
+        return path.open('rb')
+    stream = gzip.open(path, 'rb')
+    try:
+        # Validate the entire gzip member/CRC before staging any of its records.
+        # Offsets in SQLite remain uncompressed offsets, including after restart.
+        total = 0
+        while chunk := stream.read(min(MAX_LINE, MAX_GZIP_BYTES - total + 1)):
+            total += len(chunk)
+            if total > MAX_GZIP_BYTES:
+                raise RuntimeError('Compressed EVE archive exceeds the recovery size limit.')
+        stream.seek(0)
+        return stream
+    except BaseException:
+        stream.close()
+        raise
+
+
+def open_copytruncate_archive(path, offset, anchor):
+    # Only the immediate numbered predecessor is safe to join to the current
+    # file. Finding an anchor in an older archive could skip intervening logs.
+    candidates = [Path(str(path) + suffix) for suffix in ('.1', '.1.gz')]
+    candidates = [candidate for candidate in candidates if candidate.exists() and not candidate.is_symlink()]
+    if len(candidates) != 1:
+        raise RuntimeError('EVE log changed before the saved offset. Check rotation before resuming.')
+    stream = open_eve_file(candidates[0])
+    try:
+        if not checkpoint_matches(stream, offset, anchor):
+            raise RuntimeError('EVE log changed before the saved offset. Check rotation before resuming.')
+        LOG.info('Verified previous EVE archive against the saved checkpoint.')
+        return stream
+    except BaseException:
+        stream.close()
+        raise
+
+
 def open_checkpoint_file(path, identity):
     # Suricata can rename a file and open a new one during log rotation.
-    # Look in the same directory for the previous, uncompressed file.
+    # Compressed streams retain their backing file identity and logical offsets.
     for candidate in path.parent.glob(f'{path.name}*'):
         try:
             if candidate.is_symlink() or not candidate.is_file():
@@ -77,13 +128,13 @@ def open_checkpoint_file(path, identity):
             stat = candidate.stat()
             if (stat.st_dev, stat.st_ino) != identity:
                 continue
-            stream = candidate.open('rb')
+            stream = open_eve_file(candidate)
         except FileNotFoundError:
             continue
         if file_identity(stream) == identity:
             return stream
         stream.close()
-    raise RuntimeError('Previous EVE file is unavailable. Check log rotation and retention.')
+    raise MissingCheckpointFile('Previous EVE file is unavailable. Check log rotation and retention.')
 
 
 def read_records(db, stream, offset, source_ip, destination_ip, capacity, ports):
@@ -130,18 +181,36 @@ def collect(db, path, source_ip, destination_ip, ports=SSH_PORTS):
             return 0
         device, inode, offset, anchor = position
         rotated = (device, inode) != file_identity(current)
-        stream = open_checkpoint_file(path, (device, inode)) if rotated else current
+        stream = current
         try:
-            if os.fstat(stream.fileno()).st_size < offset or fingerprint(stream, offset) != anchor:
+            if rotated:
+                try:
+                    stream = open_checkpoint_file(path, (device, inode))
+                except MissingCheckpointFile:
+                    stream = open_copytruncate_archive(path, offset, anchor)
+            elif not checkpoint_matches(current, offset, anchor):
+                stream = open_copytruncate_archive(path, offset, anchor)
+            if not checkpoint_matches(stream, offset, anchor):
                 raise RuntimeError('EVE log changed before the saved offset. Check rotation before resuming.')
+            original_offset = offset
             added, offset, at_end = read_records(db, stream, offset, source_ip, destination_ip, capacity, ports)
-            if rotated and at_end:
+            if not checkpoint_matches(stream, original_offset, anchor):
+                raise RuntimeError('EVE log changed during collection. Queue and checkpoint retained.')
+            if file_identity(current) != (path.stat().st_dev, path.stat().st_ino):
+                raise RuntimeError('EVE log rotated during collection. Queue and checkpoint retained.')
+            if stream is not current and at_end:
+                if re.fullmatch(re.escape(path.name) + r'\.\d+(?:\.gz)?', Path(stream.name).name):
+                    latest = [Path(str(path) + suffix) for suffix in ('.1', '.1.gz')]
+                    latest = [candidate for candidate in latest if candidate.is_file() and not candidate.is_symlink()]
+                    if len(latest) != 1 or file_identity(stream) != (latest[0].stat().st_dev, latest[0].stat().st_ino):
+                        raise RuntimeError('Multiple EVE rotations need review. Queue and checkpoint retained.')
                 save_position(db, current, 0)
+                LOG.info('Previous EVE file drained. Continuing with the current EVE file.')
             else:
                 save_position(db, stream, offset)
             return added
         finally:
-            if rotated:
+            if stream is not current:
                 stream.close()
 
 
@@ -156,6 +225,8 @@ def run(db, endpoint, token, path, source_ip, destination_ip, ports):
                 LOG.info('Queued %d Suricata events', added)
         except RuntimeError as error:
             LOG.warning('%s', error)
+        except (EOFError, gzip.BadGzipFile, zlib.error):
+            LOG.warning('Compressed EVE archive is incomplete or invalid. Queue and checkpoint retained.')
         except OSError:
             LOG.warning('Cannot read the EVE log. Check the path and service permissions.')
         if time.monotonic() >= retry_at:
