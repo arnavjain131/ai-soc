@@ -207,6 +207,27 @@ After the service is active, open and close a new ordinary SSH session. Wait for
 
 The forwarder holds up to 5,000 pending flows on disk and retries unacknowledged batches. For rename-based rotation, retain the previous uncompressed EVE file in the same directory until the collector reads it. The collector drains that file and then reads the current EVE file. Multiple rotations while stopped can leave intervening files unprocessed. If the checkpointed file is missing or was truncated, the service logs the problem and keeps queued deliveries and the checkpoint. Check the EVE file and rotation configuration before changing the checkpoint.
 
+### Copytruncate recovery update (local fix, 22 November)
+
+The updated forwarder can verify the immediate numbered `eve.json.1` or `eve.json.1.gz` against its checkpoint anchor after truncation or compression. It reads any remaining archived records and only then continues with the current file. Compressed archives are validated before queuing their records; the uncompressed size limit is 128 MiB. Multiple intervening rotations, ambiguous archives, failed validation or missing archives require review. The update preserves the queue and existing state tables. It does not claim to recover bytes lost by the inherent copy/truncate race.
+
+For the specifically diagnosed lab state (archive exactly consumed, current file truncated), from the Windows project directory:
+
+```powershell
+scp -P 2222 collector/suricata_forwarder.py collector/upgrade-suricata-rotation.sh aisoc@127.0.0.1:~/
+ssh -p 2222 aisoc@127.0.0.1
+```
+
+Then in Ubuntu:
+
+```bash
+sed -i 's/\r$//' ~/upgrade-suricata-rotation.sh
+sudo bash ~/upgrade-suricata-rotation.sh
+sudo journalctl -u ai-soc-suricata.service -n 20 --no-pager
+```
+
+The upgrade requires the forwarder to be active initially and refuses if its preflight no longer matches the diagnosed state. It briefly stops only that forwarder and creates a private backup of its installed code, SQLite state, verified archive and original archive ACL. It preserves the source credential, configuration and queue, grants the existing service group read access to the archive and installs only the corrected forwarder. Keep the printed backup directory. Check for API acknowledgements and the already captured port-18080 record in the dashboard; do not generate another connection or manually import that event for this check. Do not restore the SQLite backup over subsequent legitimate progress without reviewing the newer state.
+
 ## Phase 8: forward alerts and inspect incident context
 
 Update the guest after the hosted API accepts `SURICATA_ALERT`. From Windows, repeat the file copy in phase 7. In Ubuntu, rerun `sudo bash ~/install-suricata-forwarder.sh`. The installer reuses the source credential and configuration and restarts the service with its existing SQLite state.
@@ -222,3 +243,52 @@ Deploy the updated API and frontend before upgrading the lab forwarder. Password
 For port scan detection, copy the forwarder files from phase 7 and rerun the installer on Ubuntu. Set `SOC_FLOW_DESTINATION_PORTS` in `/etc/ai-soc/suricata-forwarder.conf` using `sudoedit`. Use `all` to monitor every TCP destination port **between the two configured lab IP addresses**, or provide a comma-separated list with at least eight authorized ports. Leaving the setting unset collects port 22. Apply the setting with `sudo systemctl restart ai-soc-suricata.service` and check the service journal. The installer uses the existing token and queue.
 
 The rules apply to newly ingested records. The local automated checks use isolated fixtures for positive and negative detection cases. In the hosted lab, verify any naturally observed event by opening its incident and comparing the linked flow or signature with Network events.
+
+## Live SSH/network correlation verification
+
+Use the existing `soc-lab-test` account, SSH mapping `127.0.0.1:2222`, and both working collectors. No temporary TCP listeners or additional NAT mappings are needed. The owner must authorize the test because it deliberately generates failed-login records and can create a new incident.
+
+From the Windows project directory, run:
+
+```powershell
+.\scripts\test_ssh_correlation.ps1
+```
+
+The initial preflight asks for the correct `aisoc` password and sudo password locally. It only reads the API/guest state and aborts on identified lockout controls or unsuitable SSH/account configuration; it does not disable those protections. Once preflight passes, press Enter when ready. At each of the five subsequent **soc-lab-test** password prompts, enter an intentionally incorrect password. Each connection allows one password prompt, leaving the server's SSH authentication limits unchanged. Complete all five within 120 seconds. Do not enter the administrator password at the test-account prompts or put passwords in chat, scripts or logs. Stop on an unexpected response or a missing password prompt.
+
+Leave Suricata and both forwarders running. Allow flow-export and ingestion time, then refresh Incidents and open the newest **Possible brute force against soc-lab-test** by creation time, rather than the older incident with the same title. Confirm five linked `LOGIN_FAILED` records and matching related network context for `10.0.2.2` to `10.0.2.15:22`. The context query uses event timestamps from two minutes before the first linked failure through two minutes after the last, within the same workspace, and returns at most 50 TCP records. Other sessions sharing those NAT endpoints can appear too. Failure to see an incident immediately is a reason to inspect the journal, queues and database before repeating the test, not to lower the threshold or manually import events.
+
+## Phase 10: temporary TCP detection verification
+
+Use the established Windows host and `AI-SOC-Ubuntu` guest. The test uses TCP ports 18080 through 18087 on the guest address `10.0.2.15`, with matching Windows NAT forwards bound only to `127.0.0.1`. Leave adapter 1 in NAT mode and the VM running through cleanup.
+
+1. From the Windows project directory, run `.\scripts\lab_tcp_nat.ps1 -Action Install`. The script checks the existing SSH mapping, checks the ports on Windows and Ubuntu, copies the listener to the guest home directory, and adds the temporary rules. Enter the Ubuntu password at the local SSH prompts. The Ubuntu preflight binds and releases the eight sockets before any forwarding rules are added.
+2. Sign in with `ssh -p 2222 aisoc@127.0.0.1`, then run `python3 ~/lab_tcp_listener.py` in Ubuntu. Wait for the ready message. The foreground listener has a five-minute limit and accepts and closes connections without reading application data.
+3. After authorizing the test connections, use a second Windows PowerShell window to make one connection to each explicitly configured listener:
+
+   ```powershell
+   foreach ($port in 18080..18087) {
+       $client = [System.Net.Sockets.TcpClient]::new()
+       try {
+           $client.Connect('127.0.0.1', $port)
+           "Connected to lab listener $port"
+       } finally {
+           $client.Dispose()
+       }
+   }
+   ```
+
+4. In **Network events**, verify eight distinct guest ports and TCP flow record timestamps within 60 seconds. Flow records can arrive after the connections close. Check **Incidents** for **Possible TCP port scan** and inspect its eight linked flows.
+5. Stop the guest listener with **Ctrl+C**, then run `.\scripts\lab_tcp_nat.ps1 -Action Remove` from Windows. Cleanup removes the exact lab mappings and checks that Windows can bind those ports again and that the existing SSH forwarding rule is present.
+
+### Remaining check: automatic delivery on a non-SSH port
+
+The earlier eight-port incident used an approved one-time import. To verify the upgraded live forwarder independently, resume the saved VM, then follow steps 1 and 2 above. Keep the existing source, credentials and SQLite state. After the listener is ready and the owner authorizes the connection, run this in a second Windows PowerShell window:
+
+```powershell
+Get-Date -Format o
+$client = [System.Net.Sockets.TcpClient]::new()
+try { $client.Connect('127.0.0.1', 18080) } finally { $client.Dispose() }
+```
+
+Stop the listener with **Ctrl+C**. Allow time for Suricata to write the closed flow, then check **Network events** for a fresh TCP flow from `10.0.2.2` to `10.0.2.15:18080`, collected by **Ubuntu Suricata**. Compare the event time with this test; the table uses UTC. A single destination port is below the eight-port scan threshold. Do not manually import the record, because that would not verify automatic delivery. If it does not appear, inspect the service acknowledgements and queue before repeating the connection. Finish with `.\scripts\lab_tcp_nat.ps1 -Action Remove`; do not clear checkpoints or change thresholds.

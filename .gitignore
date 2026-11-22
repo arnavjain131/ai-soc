@@ -15,3 +15,6 @@ coverage/
 *.db-wal
 *.db-shm
 .vercel/
+backups/
+*.aisocbak
+*.dump

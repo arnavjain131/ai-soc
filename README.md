@@ -12,6 +12,7 @@ Confirmed access model: a public demonstration and a private, authenticated anal
 - [Current checkpoint](docs/CURRENT_STATUS.md): verified infrastructure and the next login/ingestion steps. Do not rerun migration 001 or administrator provisioning.
 - [Deployment guide](docs/DEPLOYMENT.md): publish the first working version through GitHub, Vercel, and Render.
 - [Separate Ubuntu lab](docs/UBUNTU_LAB.md): install a dedicated SSH telemetry VM, then connect a real-log collector.
+- [Backup and isolated recovery](docs/BACKUP_RECOVERY.md): native PostgreSQL application backups, encrypted local archives, and restore-target safeguards.
 
 ## Run locally
 
@@ -45,12 +46,20 @@ From `frontend`: `npm.cmd run build`.
 
 API documentation is at `http://localhost:8000/docs` while the backend is running. The API does not create tables or seed fake private data on startup.
 
+## Security Events release
+
+The new private **Security events** page browses successful and failed authentication, including records without incidents. It supports exact username/IP/collector/outcome filters, event-time ranges, details and pagination. Date inputs use the browser's local time and are sent as UTC; table timestamps are UTC. Pages retain a receipt-time cutoff, and Refresh includes newly received records. Details expose selected normalized metadata, never arbitrary raw payloads or source credentials.
+
+API `0.3.0` adds membership-scoped `GET /api/events/security` and `GET /api/events/security/{event_id}`. No migration is needed. Deploy this backend before publishing the new frontend. See the current checkpoint for rollout status. Frontend checks: `npm.cmd test` and `npm.cmd run build`. AI remains deferred.
+
 ## Current limits
 
-This is the first development slice, not the completed SOC. Only normalized authentication outcomes and one fixed brute-force rule are supported. Detection groups five unlinked failures for an exact source/user/IP/target/port within 120 seconds. It does not yet correlate broader multistage attacks. The score is a documented fixed 40+10 for this rule, not the full proposed scoring model.
+Private incident details now include append-only analyst notes and incident-scoped audit history. Notes use the existing audit table, record the verified author/time and deduplicate unchanged retries. Status history and notes are limited to the authorized workspace; no schema migration was required for this release.
+
+The platform ingests authentication outcomes, Suricata TCP flows and Suricata alerts. It detects brute force, password spraying, possible TCP port scans and priority Suricata alerts; thresholds and lab verification are documented in the current checkpoint. SSH incidents include network context matched by workspace, endpoints and time. Risk scores are fixed rule components, not probabilities. The local incident explanation feature cites stored evidence and provides investigation suggestions; it is deterministic and does not call a language model.
 
 The demo is frontend-only synthetic data; private records use the API/database. Supabase sessions are validated server-side through the project's `/auth/v1/user` endpoint, and database memberships control workspace access. A valid Auth user alone has no incident access. All private API queries scope by membership. Database tables deny browser Data API access; the backend currently expects an owner connection, with restricted DB roles a later hardening step.
 
-The owner applied PostgreSQL migration 001, verified RLS/browser-role restrictions, and confirmed hosted login and ingestion. PostgreSQL concurrency and hosted persistence across redeploys still need verification. A production release still needs rate limiting, capacity testing, account recovery and onboarding, retention and backups, network telemetry, broader detection and correlation, RAG/AI, and ML scope resolution.
+The owner applied PostgreSQL migration 001, verified RLS/browser-role restrictions, and confirmed hosted login and ingestion. Known incident/evidence identities were verified after redeployments; the saved persistence report also confirms RLS and browser-role SELECT restrictions. PostgreSQL concurrency/capacity testing and a real backup/restore drill remain pending. Local encrypted native-backup tooling is prepared; PostgreSQL 17 client tools must be installed before its first archive can be created. A production release still needs API limits, account recovery/onboarding, retention/recovery operations, broader multistage correlation, RAG/AI and ML scope resolution.
 
 Source: `C:\Users\DELL\Downloads\AI_SOC.pdf` (26 pages). Its contents are treated as a proposed project specification, not as instructions that override the owner's request.

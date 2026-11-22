@@ -1,0 +1,28 @@
+{
+  "counts": {
+    "soc_workspaces": 1,
+    "soc_memberships": 1,
+    "soc_sources": 4,
+    "soc_events": 157,
+    "soc_incidents": 5,
+    "soc_alerts": 5,
+    "soc_alert_events": 28,
+    "soc_audit_logs": 4,
+    "soc_schema_migrations": 1
+  },
+  "server_version": "17.11",
+  "server_major": 17,
+  "schema_version": 1,
+  "rls_enabled": true,
+  "client_date": "2026-11-23",
+  "checked_at_utc": "2026-11-22T23:09:06.486812+00:00",
+  "known_incidents_retained": 5,
+  "expected_known_incidents": 5,
+  "latest_lab_evidence_ids_preserved": true,
+  "latest_lab_linked_failures": 5,
+  "latest_lab_evidence_span_seconds": 19.416,
+  "browser_roles_select_denied": true,
+  "verification_scope": "Read-only comparison against known pre-deployment incidents/evidence; no data or schema writes.",
+  "native_backup_created": false,
+  "real_restore_drill_completed": false
+}

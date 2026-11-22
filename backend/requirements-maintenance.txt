@@ -1,0 +1,2 @@
+# Local maintenance only; not required by the hosted FastAPI service.
+cryptography==50.0.1
