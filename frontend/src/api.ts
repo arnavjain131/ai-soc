@@ -10,7 +10,7 @@ export class ApiError extends Error {
   constructor(status: number, message: string) { super(message); this.status = status }
 }
 
-export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+export async function api<T>(path: string, method = 'GET', body?: unknown, timeoutMs = 15000): Promise<T> {
   if (!supabase) throw new Error('Supabase configuration is required for the private workspace.')
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Sign in to continue.')
@@ -18,7 +18,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
     method,
     headers: { Authorization: `Bearer ${session.access_token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) throw new ApiError(response.status, typeof data.detail === 'string' ? data.detail : 'The API could not complete this request.')

@@ -40,7 +40,7 @@ export function WorkspaceAccess({ refreshKey }: { refreshKey: number }) {
       setSelected(null); setConfirmation(''); setOffset(0); setAuditOffset(0); setRevision(value => value + 1)
     } catch (failure) {
       if (current.current === request) setError(failure instanceof Error ? failure.message : 'Could not revoke access. Refresh before retrying.')
-    } finally { submitting.current = false; if (current.current === request) setSaving(false) }
+    } finally { submitting.current = false; setSaving(false) }
   }
 
   return <div className="workspace-access">
