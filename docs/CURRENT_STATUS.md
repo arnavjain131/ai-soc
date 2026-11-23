@@ -1,6 +1,18 @@
 # Current checkpoint
 
-Updated 23 November 2026. Keep credentials in ignored local configuration.
+Updated 24 November 2026. Keep credentials in ignored local configuration.
+
+## Prepared: administrator access management; AI requested next
+
+API 0.6.0 adds workspace-scoped admin-only member listing, safe access-history listing and membership revocation. Both owner CLI and API writers take a shared workspace row lock. The server rechecks a browser actor's admin membership inside that lock, protects the last administrator and refuses browser self-revocation. Revocation and its audit record commit together; subsequent private API membership checks reject the removed account. No Auth user, source, incident, note or evidence is deleted. Existing ingestion tokens remain separate and require deliberate review if offboarding a token holder.
+
+The frontend administrator tab is implemented locally with member/history pagination and full-account-ID confirmation. New grants remain owner CLI operations, default to analyst, and require a verified Auth UUID and existing workspace. The CLI also has `revoke-member` with exact repeated-ID confirmation. See `docs/WORKSPACE_ACCESS.md`. No migration or new credentials are required. Deploy backend before frontend publication.
+
+Validation: 94 regular backend tests and 19 frontend tests passed; the frontend build passed. An additional opt-in PostgreSQL 17.12 concurrency test passed against a fresh disposable local database: two simultaneous removals left exactly one administrator and one successful revocation audit entry. That test database was removed and the local lab stopped. No hosted membership changes, source revocations or telemetry tests occurred. Hosted API/UI rollout remains pending.
+
+An isolated localhost browser fixture also verified the administrator tab, synthetic member rows, owner self-protection text, membership history, confirmation disabled for an incorrect ID and enabled only for the exact selected ID. The confirmation was cancelled without removing an account. This fixture uses a separate in-memory SQLite database and synthetic Auth responses; it never connects to Supabase. These browser checks do not claim a hosted revocation was performed.
+
+The owner explicitly requested AI integration after this milestone. That supersedes earlier deferral notes below. The existing unused explanation files are deterministic evidence-summary drafts, not an LLM integration, and remain unpublished. The next AI slice should use real model-generated incident interpretation with validated evidence citations, approved response references, prompt-injection handling and bounded requests/costs. Provider/account and spending-limit clarification was requested; no provider has been selected, key requested in chat, paid inference run or incident evidence sent externally.
 
 ## Deployed: account recovery verified; controlled onboarding available
 

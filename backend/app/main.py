@@ -18,10 +18,11 @@ from .schemas import EventBatch, IncidentUpdate, NetworkRecord, SourceCreate, Su
 from .security_events import install_security_event_routes
 from .incident_journal import install_incident_journal_routes
 from .request_limits import Admission, RequestProtection
+from .memberships import install_membership_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.5.0'
+API_VERSION = '0.6.0'
 
 
 def token_hash(token):
@@ -139,7 +140,7 @@ def create_app(settings=None):
     api.add_middleware(BodyLimit)
     api.add_middleware(RequestProtection, admission=api.state.admission)
     api.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.origins.split(',')],
-                       allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'],
+                       allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'],
                        expose_headers=['Retry-After'])
 
     @api.get('/health/live')
@@ -286,6 +287,7 @@ def create_app(settings=None):
 
     install_security_event_routes(api, member, session_dependency)
     install_incident_journal_routes(api, member, session_dependency, authorized_incident)
+    install_membership_routes(api, member, session_dependency)
     return api
 
 

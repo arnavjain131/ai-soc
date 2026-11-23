@@ -5,6 +5,7 @@ from uuid import UUID
 from .config import Settings
 from .database import database
 from .models import Audit, Base, Membership, Workspace
+from .memberships import lock_workspace, revoke_membership
 
 
 def grant_membership(session, user_id, role='analyst', workspace_id=None, workspace_name='Private SOC'):
@@ -15,13 +16,16 @@ def grant_membership(session, user_id, role='analyst', workspace_id=None, worksp
     if session.get(Membership, user_id):
         raise ValueError('User already has a membership; use a reviewed administrative operation for changes')
     if workspace_id:
-        workspace = session.get(Workspace, workspace_id)
-        if not workspace:
-            raise ValueError('Workspace does not exist')
+        try:
+            workspace = lock_workspace(session, workspace_id)
+        except LookupError:
+            raise ValueError('Workspace does not exist') from None
     else:
         workspace = Workspace(name=workspace_name)
         session.add(workspace)
         session.flush()
+    if session.get(Membership, user_id):
+        raise ValueError('User already has a membership; use a reviewed administrative operation for changes')
     session.add(Membership(user_id=user_id, workspace_id=workspace.id, role=role))
     session.add(Audit(workspace_id=workspace.id, actor='owner-cli', action='membership.granted',
                       target_id=user_id, details={'role': role, 'provisioning': 'owner-cli'}))
@@ -37,9 +41,15 @@ def main():
     grant.add_argument('--role', choices=['admin', 'analyst'], default='analyst')
     grant.add_argument('--workspace-id', type=lambda x: str(UUID(x)))
     grant.add_argument('--workspace-name', default='Private SOC')
+    revoke = sub.add_parser('revoke-member', help='Revoke only workspace membership, preserving Auth user and telemetry')
+    revoke.add_argument('--user-id', required=True, type=lambda x: str(UUID(x)))
+    revoke.add_argument('--workspace-id', required=True, type=lambda x: str(UUID(x)))
+    revoke.add_argument('--confirm-user-id', required=True, type=lambda x: str(UUID(x)))
     args = parser.parse_args()
     if args.command == 'grant-member' and args.role == 'analyst' and not args.workspace_id:
         parser.error('Analyst provisioning requires --workspace-id for an existing workspace')
+    if args.command == 'revoke-member' and args.user_id != args.confirm_user_id:
+        parser.error('Confirmation must exactly match the user ID to revoke')
     config = Settings()
     config.validate()
     engine, sessions = database(config.database_url)
@@ -48,6 +58,13 @@ def main():
             parser.error('Use the versioned SQL migration for PostgreSQL')
         Base.metadata.create_all(engine)
         print('Local development schema initialized. No user or source credentials were created.')
+    elif args.command == 'revoke-member':
+        with sessions.begin() as session:
+            try:
+                revoke_membership(session, args.user_id, args.workspace_id)
+            except (LookupError, ValueError) as error:
+                parser.error(str(error))
+        print(f'Revoked workspace membership for user {args.user_id}. Auth account and telemetry retained.')
     else:
         with sessions.begin() as session:
             try:
