@@ -2,7 +2,7 @@
 
 Updated 24 November 2026. Keep credentials in ignored local configuration.
 
-## Prepared: administrator access management; AI requested next
+## Access API deployed; administrator frontend publishing; AI requested next
 
 API 0.6.0 adds workspace-scoped admin-only member listing, safe access-history listing and membership revocation. Both owner CLI and API writers take a shared workspace row lock. The server rechecks a browser actor's admin membership inside that lock, protects the last administrator and refuses browser self-revocation. Revocation and its audit record commit together; subsequent private API membership checks reject the removed account. No Auth user, source, incident, note or evidence is deleted. Existing ingestion tokens remain separate and require deliberate review if offboarding a token holder.
 
@@ -11,6 +11,8 @@ The frontend administrator tab is implemented locally with member/history pagina
 Validation: 94 regular backend tests and 19 frontend tests passed; the frontend build passed. An additional opt-in PostgreSQL 17.12 concurrency test passed against a fresh disposable local database: two simultaneous removals left exactly one administrator and one successful revocation audit entry. That test database was removed and the local lab stopped. No hosted membership changes, source revocations or telemetry tests occurred. Hosted API/UI rollout remains pending.
 
 An isolated localhost browser fixture also verified the administrator tab, synthetic member rows, owner self-protection text, membership history, confirmation disabled for an incorrect ID and enabled only for the exact selected ID. The confirmation was cancelled without removing an account. This fixture uses a separate in-memory SQLite database and synthetic Auth responses; it never connects to Supabase. These browser checks do not claim a hosted revocation was performed.
+
+Backend commit `0bc4608` was manually deployed through the existing Render dashboard after the owner signed in. Render showed Deploy succeeded / Live. Public HTTP checks confirmed version 0.6.0, readiness 200, and anonymous 401 responses from both new GET endpoints. Auto-deploy, service plan, environment and source configuration were preserved. The administrator frontend is published only after these backend checks. No production membership was revoked or added.
 
 The owner explicitly requested AI integration after this milestone. That supersedes earlier deferral notes below. The existing unused explanation files are deterministic evidence-summary drafts, not an LLM integration, and remain unpublished. The next AI slice should use real model-generated incident interpretation with validated evidence citations, approved response references, prompt-injection handling and bounded requests/costs. Provider/account and spending-limit clarification was requested; no provider has been selected, key requested in chat, paid inference run or incident evidence sent externally.
 
