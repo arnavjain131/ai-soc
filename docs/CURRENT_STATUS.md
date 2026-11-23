@@ -2,6 +2,14 @@
 
 Updated 23 November 2026. Keep credentials in ignored local configuration.
 
+## Prepared: password recovery and controlled analyst onboarding
+
+Frontend adds Forgot your password, Supabase PKCE recovery at `/auth/recovery`, same-origin redirects and a separate recovery page that never mounts the dashboard. It removes callback query/fragment parameters before rendering, requires one successful recovery-type code exchange rather than trusting an existing session, and deduplicates exchange across StrictMode effects. Password/confirmation checks precede Auth updates. Global sign-out is attempted after success, with separate warning if that fails. Public sign-up, implicit-token callbacks and invitation-link acceptance remain unavailable. Referrer policy is no-referrer. No real email, password change, new user or membership grant was performed for testing.
+
+Private workspace loading checks `/api/me` first and distinguishes missing membership, expired sessions and service errors. Missing-member guidance shows the user's own UUID for administrator verification. Failed authorization clears loaded private records and never replaces them with synthetic data. The owner-only CLI now defaults to analyst, requires an existing workspace for analysts, refuses duplicate memberships, and records new grants in existing audit storage with provisioning actor owner-cli. Explicit initial-admin provisioning remains supported; existing owner/workspace data was not changed.
+
+Validation: 85 backend tests, 19 frontend tests and the production build passed. Frontend coverage uses mocked Auth operations, not a real recovery email. CLI coverage uses synthetic databases. Existing workspace-boundary tests pass. See `docs/ACCOUNT_ACCESS.md` for exact Supabase URL configuration, SMTP requirements and the existing-workspace grant command. Hosted callback/email/UI validation remains pending; additional analysts need custom SMTP rather than being added to the Supabase organization. No migration, new web API or Render deployment is required. AI stays deferred.
+
 ## Deployed: API request protection
 
 API 0.5.0 adds bounded process-local token buckets before body parsing/auth/database work. Dashboard and collector ingestion have independent per-credential and aggregate budgets; rotating invalid credentials cannot bypass the aggregate budget. Credential hashes, not plaintext tokens, are retained in a maximum 2,048-entry idle-reclaimed map. Defaults are 120 requests/minute with burst 30 per supplied credential, 600/minute with burst 120 per aggregate, 30/minute for anonymous requests, readiness 60/minute with burst 10, and 16 total protected in-flight requests. HTTP 429 includes Retry-After and CORS exposure. Body buffering retains the 1 MiB bound and now has a 15-second total deadline. GET liveness and CORS preflight remain lightweight.

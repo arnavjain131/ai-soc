@@ -1,6 +1,6 @@
 # Connect the first implementation slice
 
-**Resume at section 5 after starting both local services and signing in.** Supabase project creation, migration 001, local environment configuration, database connectivity, and administrator provisioning are complete. Do not repeat sections 1-4, rerun the initial migration, overwrite environment files, or provision a duplicate administrator/workspace. See CURRENT_STATUS.md for the current checkpoint. Earlier setup instructions below remain as reference for fresh environments only. No public deployment has happened yet; never post passwords, tokens, or keys in chat.
+**Historical setup reference.** The hosted website/API, Supabase connection, migration 001, administrator provisioning and real collectors are complete. Do not repeat sections 1-4, rerun the initial migration, overwrite environment files or provision a duplicate administrator/workspace. See CURRENT_STATUS.md for the checkpoint and ACCOUNT_ACCESS.md for current recovery and additional-analyst procedures. Never post passwords, tokens or keys in chat.
 
 ## 1. Create the Supabase project
 
@@ -46,7 +46,7 @@ Do not run `init-local` against Supabase. Run backend commands from the `backend
 
 ## 4. Provision your analyst account
 
-For this first development slice, use the Supabase Authentication user-management screen to add your own email/password user and complete any required confirmation. Enter the password yourself and keep it private. Disable public sign-up for the invite-only deployment. This slice does not yet implement invite acceptance or password recovery in its UI.
+For a fresh installation, use the Supabase Authentication user-management screen to add your own email/password user and complete any required confirmation. Enter the password yourself and keep it private. Disable public sign-up for the administrator-provisioned deployment. Password recovery UI is now implemented; its hosted settings and validation are described in ACCOUNT_ACCESS.md. Invitation-link acceptance is not implemented.
 
 Copy the new Auth user's UUID. From the `backend` directory, with the intended `DATABASE_URL` configured, run:
 

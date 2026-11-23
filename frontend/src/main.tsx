@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Activity, ArrowDownRight, ArrowRight, Check, ChevronRight, Clock3, Database, Eye, FileSearch, LayoutDashboard, LockKeyhole, LogOut, Radio, RefreshCw, Search, Shield, ShieldAlert, Terminal, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
-import { api, supabase } from './api'
+import { api, ApiError, supabase } from './api'
+import { AccountRecovery, SignInDialog } from './AccountAccess'
+import { RECOVERY_PATH, recoveryCallback, recoveryExchange } from './accountRecovery'
 import { NetworkEvents } from './NetworkEvents'
 import { SecurityEvents } from './SecurityEvents'
 import { IncidentJournal } from './IncidentJournal'
@@ -50,7 +52,7 @@ function App() {
   const [mode, setMode] = useState<'demo' | 'private'>('demo')
   const [session, setSession] = useState<Session | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
-  const [email, setEmail] = useState(''), [password, setPassword] = useState('')
+  const [access, setAccess] = useState<'loading' | 'allowed' | 'missing' | 'expired' | 'error'>('loading')
   const [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false)
   const [incidents, setIncidents] = useState<Incident[]>(demoIncidents)
@@ -88,34 +90,36 @@ function App() {
     try {
       if (mode === 'demo') { setIncidents(demoIncidents); setStats(demoStats); setSources(demoSources) }
       else {
-        const [items, counts, sensors, identity] = await Promise.all([api<Incident[]>('/api/incidents?limit=100'), api<Stats>('/api/dashboard/stats'), api<Source[]>('/api/sources'), api<{ role: string }>('/api/me')])
+        const identity = await api<{ role: string }>('/api/me')
+        if (boundaryRef.current !== requestedBoundary) return
+        const [items, counts, sensors] = await Promise.all([api<Incident[]>('/api/incidents?limit=100'), api<Stats>('/api/dashboard/stats'), api<Source[]>('/api/sources')])
         if (boundaryRef.current !== requestedBoundary) return
         setIncidents(items); setStats(counts); setSources(sensors); setRole(identity.role)
+        setAccess('allowed')
         setSourcesCheckedAt(Date.now()); setSourceNow(Date.now())
       }
       setLoaded(true)
-    } catch (e) { if (boundaryRef.current === requestedBoundary) setError(e instanceof Error ? e.message : 'Could not load the workspace.') }
+    } catch (e) {
+      if (boundaryRef.current === requestedBoundary) {
+        setError(e instanceof Error ? e.message : 'Could not load the workspace.')
+        setAccess(e instanceof ApiError && e.status === 403 ? 'missing' : e instanceof ApiError && e.status === 401 ? 'expired' : 'error')
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          setDetail(null); setIncidents([]); setSources([]); setSourceToken(''); setRole(''); setLoaded(false)
+          setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 })
+        }
+      }
+    }
     finally { if (boundaryRef.current === requestedBoundary) setBusy(false) }
   }
 
   useEffect(() => {
     setTab(current => mode === 'demo' && (current === 'network' || current === 'events') ? 'overview' : current); setDetail(null); setNotice(''); setError(''); setLoaded(false); setBusy(false); setRole(''); setSourceToken(''); setSourceName('')
     setSourcesCheckedAt(null)
+    setAccess('loading')
     // Clear data before switching boundaries so private failures never show demo metrics as real.
     setIncidents([]); setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 }); setSources([])
     if (mode === 'demo' || session) void refresh()
   }, [mode, session?.access_token])
-
-  async function signIn(event: React.FormEvent) {
-    event.preventDefault(); setError(''); setBusy(true)
-    try {
-      if (!supabase) throw new Error('Private login is not connected yet. Configure the Supabase project URL and publishable key first.')
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-      if (authError) throw authError
-      setPassword(''); setLoginOpen(false); setMode('private')
-    } catch (e) { setError(e instanceof Error ? e.message : 'Sign in failed.') }
-    finally { setBusy(false) }
-  }
 
   async function openIncident(item: Incident) {
     const requestedBoundary = boundary
@@ -187,8 +191,15 @@ function App() {
         <div className="demo-banner"><Eye size={19}/><div><strong>{mode === 'demo' ? 'You’re exploring a demonstration workspace' : 'Private workspace · authenticated access'}</strong><p>{mode === 'demo' ? 'Synthetic authentication events. Fixed sample data, no live monitoring. All times use your browser’s timezone.' : 'Records below come from your backend. Only authorized members can access this workspace.'}</p></div><span>{mode === 'demo' ? 'READ ONLY' : 'RESTRICTED'}</span></div>
         {error && <div className="feedback error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         {notice && <div className="feedback" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss message"><X size={16}/></button></div>}
-        {mode === 'private' && session && loaded && !detail && <SourceHealth sources={sources} now={sourceNow} checkedAt={sourcesCheckedAt} onReview={() => setTab('sources')}/>}
-        {privateLocked ? <section className="panel empty"><LockKeyhole size={30}/><h2>Sign in to your analyst workspace</h2><p>The public demo remains available without an account.</p><button className="primary" onClick={() => setLoginOpen(true)}>Analyst sign in <ArrowRight size={16}/></button></section> : <>
+        {mode === 'private' && session && access === 'allowed' && loaded && !detail && <SourceHealth sources={sources} now={sourceNow} checkedAt={sourcesCheckedAt} onReview={() => setTab('sources')}/>}
+        {privateLocked ? <section className="panel empty"><LockKeyhole size={30}/><h2>Sign in to your analyst workspace</h2><p>The public demo remains available without an account.</p><button className="primary" onClick={() => setLoginOpen(true)}>Analyst sign in <ArrowRight size={16}/></button></section>
+          : mode === 'private' && access !== 'allowed' ? <section className="panel empty" aria-live="polite">
+            <LockKeyhole size={30}/><h2>{access === 'missing' ? 'Workspace access required' : access === 'expired' ? 'Sign in again' : access === 'error' ? 'Workspace temporarily unavailable' : 'Checking workspace access…'}</h2>
+            {access === 'missing' && <><p>Your account is signed in, but an administrator must grant access to an existing workspace. Password recovery does not change workspace membership.</p><p>Send your administrator this account ID:</p><code className="mono">{session?.user.id}</code></>}
+            {access === 'expired' && <p>Your session could not be verified. Sign out and sign in again.</p>}
+            {access === 'error' && <p>Your access could not be checked. Wait briefly and retry. No demo data is being shown as private telemetry.</p>}
+            <div className="access-actions">{access !== 'loading' && <button className="primary" disabled={busy} onClick={() => void refresh()}>Check access again</button>}<button className="quiet" onClick={() => setMode('demo')}>View public demo</button></div>
+          </section> : <>
           {detail ? <>
             <button className="back" onClick={() => setDetail(null)}>← Back to incident queue</button>
             <section className="panel incident-header"><div><div className="eyebrow">{detail.id.startsWith('demo') ? 'DEMONSTRATION INCIDENT' : 'INCIDENT'}</div><h2>{detail.title}</h2><span className="mono muted">{detail.id}</span></div><span className="severity">{detail.severity.toUpperCase()}</span></section>
@@ -216,8 +227,13 @@ function App() {
         <footer><span><Shield size={13}/>AI SOC Assistant</span><span>Collect. Detect. Investigate.</span><span>Foundation · November 2026</span></footer>
       </div>
     </main>
-    {loginOpen && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setLoginOpen(false) }}><section className="login panel" role="dialog" aria-modal="true" aria-labelledby="login-title" onKeyDown={e => { if (e.key === 'Escape') setLoginOpen(false) }}><button className="modal-close icon-button" aria-label="Close sign in" onClick={() => setLoginOpen(false)}><X size={20}/></button><span className="brand-icon"><LockKeyhole size={24}/></span><h2 id="login-title">Your analyst workspace</h2><p className="muted">Sign in with an account invited by your administrator.</p>{!supabase && <div className="feedback">Cloud login needs your Supabase project configuration. The public demo is ready to explore.</div>}<form onSubmit={signIn}><label htmlFor="email">Email address</label><input id="email" type="email" autoComplete="username" required autoFocus value={email} onChange={e => setEmail(e.target.value)}/><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)}/>{error && <p role="alert" className="login-error">{error}</p>}<button className="primary" disabled={busy || !supabase}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight size={16}/></button></form><p className="small muted">No public registration. Ask your administrator for access.</p></section></div>}
+    {loginOpen && <SignInDialog onClose={() => setLoginOpen(false)} onSignedIn={() => { setLoginOpen(false); setMode('private') }}/>}
   </div>
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>)
+// Recovery never mounts the private application or trusts a pre-existing session.
+const isRecovery = window.location.pathname === RECOVERY_PATH
+const callback = isRecovery ? recoveryCallback(window.location.href) : { code: null, error: false }
+if (isRecovery) window.history.replaceState(null, '', RECOVERY_PATH)
+const exchange = supabase ? recoveryExchange(code => supabase!.auth.exchangeCodeForSession(code), callback) : async () => false
+createRoot(document.getElementById('root')!).render(<React.StrictMode>{isRecovery ? <AccountRecovery exchange={exchange}/> : <App/>}</React.StrictMode>)

@@ -2,11 +2,30 @@
 import argparse
 from uuid import UUID
 
-from sqlalchemy import select
-
 from .config import Settings
 from .database import database
-from .models import Base, Membership, Workspace
+from .models import Audit, Base, Membership, Workspace
+
+
+def grant_membership(session, user_id, role='analyst', workspace_id=None, workspace_name='Private SOC'):
+    if role not in ('admin', 'analyst'):
+        raise ValueError('Unsupported membership role')
+    if role == 'analyst' and not workspace_id:
+        raise ValueError('Analyst provisioning requires --workspace-id for an existing workspace')
+    if session.get(Membership, user_id):
+        raise ValueError('User already has a membership; use a reviewed administrative operation for changes')
+    if workspace_id:
+        workspace = session.get(Workspace, workspace_id)
+        if not workspace:
+            raise ValueError('Workspace does not exist')
+    else:
+        workspace = Workspace(name=workspace_name)
+        session.add(workspace)
+        session.flush()
+    session.add(Membership(user_id=user_id, workspace_id=workspace.id, role=role))
+    session.add(Audit(workspace_id=workspace.id, actor='owner-cli', action='membership.granted',
+                      target_id=user_id, details={'role': role, 'provisioning': 'owner-cli'}))
+    return workspace.id
 
 
 def main():
@@ -15,10 +34,12 @@ def main():
     sub.add_parser('init-local', help='Create development SQLite tables only')
     grant = sub.add_parser('grant-member', help='Owner-only provisioning after creating a Supabase Auth user')
     grant.add_argument('--user-id', required=True, type=lambda x: str(UUID(x)))
-    grant.add_argument('--role', choices=['admin', 'analyst'], default='admin')
+    grant.add_argument('--role', choices=['admin', 'analyst'], default='analyst')
     grant.add_argument('--workspace-id', type=lambda x: str(UUID(x)))
     grant.add_argument('--workspace-name', default='Private SOC')
     args = parser.parse_args()
+    if args.command == 'grant-member' and args.role == 'analyst' and not args.workspace_id:
+        parser.error('Analyst provisioning requires --workspace-id for an existing workspace')
     config = Settings()
     config.validate()
     engine, sessions = database(config.database_url)
@@ -29,18 +50,11 @@ def main():
         print('Local development schema initialized. No user or source credentials were created.')
     else:
         with sessions.begin() as session:
-            if session.get(Membership, args.user_id):
-                parser.error('User already has a membership; edit roles through a reviewed administrative operation')
-            if args.workspace_id:
-                workspace = session.get(Workspace, args.workspace_id)
-                if not workspace:
-                    parser.error('Workspace does not exist')
-            else:
-                workspace = Workspace(name=args.workspace_name)
-                session.add(workspace)
-                session.flush()
-            session.add(Membership(user_id=args.user_id, workspace_id=workspace.id, role=args.role))
-            print(f'Granted {args.role} membership in workspace {workspace.id}')
+            try:
+                workspace_id = grant_membership(session, args.user_id, args.role, args.workspace_id, args.workspace_name)
+            except ValueError as error:
+                parser.error(str(error))
+        print(f'Granted {args.role} membership in workspace {workspace_id}')
     engine.dispose()
 
 

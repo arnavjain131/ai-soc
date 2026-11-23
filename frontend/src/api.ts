@@ -2,8 +2,13 @@ import { createClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-export const supabase = url && key ? createClient(url, key, { auth: { detectSessionInUrl: false } }) : null
+export const supabase = url && key ? createClient(url, key, { auth: { detectSessionInUrl: false, flowType: 'pkce' } }) : null
 const base = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) { super(message); this.status = status }
+}
 
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   if (!supabase) throw new Error('Supabase configuration is required for the private workspace.')
@@ -16,6 +21,6 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
     signal: AbortSignal.timeout(15000),
   })
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The API could not complete this request.')
+  if (!response.ok) throw new ApiError(response.status, typeof data.detail === 'string' ? data.detail : 'The API could not complete this request.')
   return data as T
 }
