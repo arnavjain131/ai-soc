@@ -2,13 +2,15 @@
 
 Updated 23 November 2026. Keep credentials in ignored local configuration.
 
-## Prepared: password recovery and controlled analyst onboarding
+## Frontend deployed: password recovery and onboarding; Supabase setup pending
 
 Frontend adds Forgot your password, Supabase PKCE recovery at `/auth/recovery`, same-origin redirects and a separate recovery page that never mounts the dashboard. It removes callback query/fragment parameters before rendering, requires one successful recovery-type code exchange rather than trusting an existing session, and deduplicates exchange across StrictMode effects. Password/confirmation checks precede Auth updates. Global sign-out is attempted after success, with separate warning if that fails. Public sign-up, implicit-token callbacks and invitation-link acceptance remain unavailable. Referrer policy is no-referrer. No real email, password change, new user or membership grant was performed for testing.
 
 Private workspace loading checks `/api/me` first and distinguishes missing membership, expired sessions and service errors. Missing-member guidance shows the user's own UUID for administrator verification. Failed authorization clears loaded private records and never replaces them with synthetic data. The owner-only CLI now defaults to analyst, requires an existing workspace for analysts, refuses duplicate memberships, and records new grants in existing audit storage with provisioning actor owner-cli. Explicit initial-admin provisioning remains supported; existing owner/workspace data was not changed.
 
 Validation: 85 backend tests, 19 frontend tests and the production build passed. Frontend coverage uses mocked Auth operations, not a real recovery email. CLI coverage uses synthetic databases. Existing workspace-boundary tests pass. See `docs/ACCOUNT_ACCESS.md` for exact Supabase URL configuration, SMTP requirements and the existing-workspace grant command. Hosted callback/email/UI validation remains pending; additional analysts need custom SMTP rather than being added to the Supabase organization. No migration, new web API or Render deployment is required. AI stays deferred.
+
+Implementation commit `34f3861` is pushed and Vercel publication was checked through public HTTP requests: the served JS contains Forgot your password, `/auth/recovery` and Workspace access required; the callback SPA route returns 200 and Referrer-Policy is no-referrer. This confirms published assets/routing, not a visually exercised form, authenticated onboarding or a delivered/reset password. No Supabase settings were changed. The owner must add the exact hosted recovery URL to the existing project's redirect allowlist and review email delivery before the controlled hosted recovery test.
 
 ## Deployed: API request protection
 
