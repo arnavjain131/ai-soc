@@ -2,6 +2,8 @@
 
 The owner requested real AI integration after administrator access management. This supersedes the earlier deferral. The existing deterministic `explanation.py` / IncidentExplanation drafts are still unused and unpublished; they are not an LLM feature.
 
+As of 24 November, the OpenAI adapter, workspace-authorized analysis endpoints, persisted quotas/retry/cache handling and private incident panel are implemented. AI remains disabled by default and no real model call has been made. The owner must finish provider account/billing/key setup and a controlled inference acceptance. Follow `OPENAI_SETUP.md` for the concrete activation steps; no secret belongs in chat or the frontend.
+
 ## Completed offline groundwork
 
 `app.ai_grounding` now prepares a bounded incident context and validates a structured answer. It contains no HTTP request, provider key, inference client, route, database mutation or command execution.
@@ -15,13 +17,13 @@ The owner requested real AI integration after administrator access management. T
 
 Six synthetic tests cover identity/raw-text exclusion, preserved grouping, bounded selection/truncation, related-context labeling, missing evidence, unknown rules, fabricated references and schema constraints. These tests do not call a model or establish model quality.
 
-## Next implementation slice, awaiting provider setup
+## Model-connected slice and remaining acceptance
 
-1. Choose hosted API or local inference, account/model access and an explicit budget. No key should be sent through chat. Store a cloud key only in private backend configuration/Render secrets; never Vite variables or Git. Local inference needs an authorized reachable service; the hosted Render backend cannot reach the owner's localhost directly.
-2. Implement the selected provider against its current official API, with bounded context/output, finite timeout and sanitized failures. No silent provider changes or fabricated AI fallback.
-3. Add an on-demand, workspace-authorized analysis endpoint and record request/provenance/answer history using a reviewed persistence design. Durable per-workspace reservations/quotas must include failed calls where spending is uncertain. Application request counts/token bounds are not a guaranteed currency billing cap; provider billing controls and usage monitoring also matter.
-4. Add the private incident AI panel with evidence links, approved reference links, provenance, provider/model identity, analysis timestamp, uncertainty and explicit loading/unavailable states. The button should explain which selected data is sent to the chosen provider. Do not call inference on every refresh or enable it in the public demo by default.
-5. Evaluate real model responses using synthetic fixtures first: unsupported compromise claims, prompt-injection attempts, missing/contradictory evidence, incorrect citations, provider failure, cross-workspace requests and quotas. Then conduct a deliberate hosted lab-incident analysis after configuration and data-handling choices are settled.
+1. Selected: OpenAI Responses API and pinned GPT-5.4 mini. Owner account/project setup, spending limit, private key entry and data-handling review remain required. No paid account creation/purchase or inference was performed by the agent.
+2. Implemented: bounded structured adapter with no tools, redirects or automatic retries, store=false, finite network timeouts and sanitized provider failures. There is no fabricated AI fallback.
+3. Implemented: authorized on-demand GET/POST analysis endpoints and existing-audit persistence of reservations, failures, answers, redacted context and provenance. Durable per-workspace quotas include failed/uncertain attempts; cache receipts retain request-id semantics. Provider currency controls remain separate.
+4. Implemented: private incident panel with evidence/reference links, provider/model/time/knowledge provenance, uncertainty, availability, quotas and sharing notice. No automatic generation on refresh and no public-demo activation.
+5. Mocked and synthetic evaluation passes for redaction, prompt-injection text exclusion, missing evidence, invalid citations, provider failures, workspace boundaries, retries and quotas. The panel/cache/citation behavior was exercised in a local browser fixture. Real response quality and hosted billing/provider success still require the deliberate owner-controlled acceptance described in OPENAI_SETUP.md.
 
 The first model-connected milestone is grounded incident interpretation, not autonomous blocking, automatic password resets, online attack generation or automatic incident disposition. Expanded RAG over approved procedures/history and the original project's separate ML requirements remain distinct follow-on deliverables.
 

@@ -14,7 +14,7 @@ from app.models import Alert, Audit, Base, Event, Membership, Source, Workspace
 
 @pytest.fixture
 def environment():
-    app = create_app(Settings(database_url='sqlite:///:memory:', supabase_url='https://example.supabase.co', supabase_key='public-test-key'))
+    app = create_app(Settings(database_url='sqlite:///:memory:', supabase_url='https://example.supabase.co', supabase_key='public-test-key', ai_enabled=False, openai_api_key=''))
     Base.metadata.create_all(app.state.engine)
     owner, outsider, analyst = (str(uuid4()) for _ in range(3))
     with app.state.sessions.begin() as db:

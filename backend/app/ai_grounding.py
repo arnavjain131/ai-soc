@@ -103,19 +103,19 @@ def build_context(detail):
 
 
 class CitedObservation(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid',str_strip_whitespace=True)
     text: str = Field(min_length=1,max_length=1000)
     event_ids: list[str] = Field(min_length=1,max_length=20)
 
 
 class InvestigationStep(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid',str_strip_whitespace=True)
     text: str = Field(min_length=1,max_length=1000)
     reference_ids: list[str] = Field(min_length=1,max_length=4)
 
 
 class GroundedAnswer(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='forbid',str_strip_whitespace=True)
     summary: str = Field(min_length=1,max_length=1200)
     observations: list[CitedObservation] = Field(min_length=1,max_length=8)
     interpretation: str = Field(min_length=1,max_length=1600)
