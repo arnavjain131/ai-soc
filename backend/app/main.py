@@ -23,7 +23,7 @@ from .ai_analysis import install_ai_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.7.0'
+API_VERSION = '0.7.1'
 
 
 def token_hash(token):

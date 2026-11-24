@@ -1,8 +1,16 @@
 # Current checkpoint
 
-Updated 24 November 2026. Keep credentials in ignored local configuration.
+Updated 25 November 2026. Keep credentials in ignored local configuration.
 
-## Implemented: OpenAI incident analysis; account setup/activation pending
+## Current: AI activated; automatic lost-response recovery
+
+The owner created the AISOC OpenAI project, purchased $5 API credits, reported auto-reload disabled, saved the key privately in Render and enabled AI. A real generation completed at 2026-11-24 20:16:01 UTC for the existing Ubuntu incident. Read-only inspection confirmed a saved, schema/citation-valid response (1,782 input / 823 output tokens); the owner then displayed it in the hosted panel. The initial browser POST reported "Failed to fetch" even though generation succeeded. Public health/CORS preflight checks passed; the exact original transport failure is unconfirmed. No additional paid call was made for diagnosis or the recovery fix. Provider hard-limit configuration is not confirmed.
+
+API 0.7.1 adds a read-only, actor/incident/workspace-scoped request receipt to AI status when a UUID `request_id` query parameter is supplied. It distinguishes missing, pending, completed and failed attempts, including cache-hit receipts. It never reserves quota or calls OpenAI. The panel now checks the exact original receipt automatically after a lost/server/pending response, displays the saved answer and current quota, and clears its pending/retry state on recovery. Six bounded GET checks tolerate transient errors; authorization failures stop recovery. No automatic generation retries or new UUIDs occur. An unrelated latest answer is never treated as this request's completion. Manual saved-result refresh also settles a recovered request.
+
+Validation: **124 backend tests passed / 3 opt-in PostgreSQL tests skipped**, **25 frontend tests passed**, and the production build passed. In an isolated localhost browser fixture, the first successful POST response was deliberately hidden from the browser. The panel recovered automatically without pressing Refresh, showed quota 1/3, and restored its Analyze button. Fixture counters confirmed exactly one generation POST, one synthetic provider call and one recovery GET. The fixture used in-memory SQLite/fake Auth and no external provider/database; both fixture processes were stopped. Deployment verification is pending below.
+
+## Earlier checkpoint: OpenAI implementation before account activation
 
 The owner delegated provider selection and implementation. OpenAI Responses API with pinned `gpt-5.4-mini-2026-03-17` was chosen after checking current official documentation; older GPT-4.1 mini/GPT-5 mini profiles were listed deprecated. API 0.7.0 adds incident-authorized GET/POST AI analysis, with private server-side configuration and disabled-by-default activation. The adapter uses strict structured output, no tools, no redirects, no automatic retries, store=false, bounded response/input/output and sanitized errors. No OpenAI account/key was created by the agent, no paid call ran, and no real incident context was transferred externally.
 

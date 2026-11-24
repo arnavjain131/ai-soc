@@ -67,6 +67,25 @@ def present(row, digest):
         'knowledge_version':context['knowledge_version'],'usage':data.get('usage',{})}
 
 
+def request_status(session, identity, incident_id, request_id, digest):
+    """Read a specific actor's receipt without reserving quota or invoking AI."""
+    query=scoped(identity,incident_id)
+    receipt=session.scalar(query.where(Audit.action.in_((REQUESTED,CACHE_HIT)),
+        Audit.actor==identity.user_id,Audit.details['request_id'].as_string()==str(request_id)))
+    if not receipt:
+        return {'state':'not_found'}
+    if receipt.action==CACHE_HIT:
+        complete=session.scalar(query.where(Audit.action==COMPLETED,Audit.id==receipt.details['result_id']))
+    else:
+        complete=session.scalar(query.where(Audit.action==COMPLETED,
+            Audit.details['request_record_id'].as_string()==receipt.id))
+    if complete:
+        return {'state':'completed','analysis':present(complete,digest)}
+    failed=session.scalar(query.where(Audit.action==FAILED,
+        Audit.details['request_record_id'].as_string()==receipt.id))
+    return {'state':'failed' if failed else 'pending'}
+
+
 def reserve(session, identity, incident_id, payload, context, settings):
     lock_workspace(session,identity.workspace_id)
     actor_still_authorized(session,identity)
@@ -123,7 +142,8 @@ def reserve(session, identity, incident_id, payload, context, settings):
 
 def install_ai_routes(api, member, session_dependency, authorized_incident, load_detail):
     @api.get('/api/incidents/{incident_id}/ai-analysis')
-    def status(incident_id: str, request: Request, identity=Depends(member), session=Depends(session_dependency)):
+    def status(incident_id: str, request: Request, request_id: UUID | None=None,
+               identity=Depends(member), session=Depends(session_dependency)):
         authorized_incident(session,identity,incident_id)
         settings=request.app.state.settings
         try:
@@ -135,7 +155,8 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
             .order_by(Audit.created_at.desc(),Audit.id.desc()).limit(1))
         return {'enabled':settings.ai_enabled and bool(settings.openai_api_key),
                 'provider':'OpenAI','model':settings.ai_model,'has_evidence':digest is not None,
-                'quota':quota(session,identity,settings),'latest':present(latest,digest) if latest else None}
+                'quota':quota(session,identity,settings),'latest':present(latest,digest) if latest else None,
+                'request':request_status(session,identity,incident_id,request_id,digest) if request_id else None}
 
     @api.post('/api/incidents/{incident_id}/ai-analysis')
     def analyze(incident_id: str, payload: AnalysisRequest, request: Request,

@@ -123,3 +123,50 @@ def test_saved_analysis_remains_readable_when_provider_is_disabled(environment,m
     assert status['enabled'] is False and status['latest']['answer']['summary']=='Failures were observed.'
     assert client.post(path,json={'request_id':str(uuid4())}).status_code==503
     assert len(calls)==1
+
+
+def test_read_only_request_recovery_returns_exact_result_and_cache_receipt(environment,monkeypatch):
+    app,client,owner,_,analyst,path,calls=setup(environment,monkeypatch)
+    first_id=str(uuid4())
+    first=client.post(path,json={'request_id':first_id}).json()['analysis']
+    # Simulate the client losing that POST response; GET alone recovers it.
+    recovered=client.get(path,params={'request_id':first_id}).json()
+    assert recovered['request']=={'state':'completed','analysis':first}
+    assert recovered['quota']['daily_used']==1
+    cache_id=str(uuid4())
+    assert client.post(path,json={'request_id':cache_id}).json()['cached'] is True
+    assert client.get(path,params={'request_id':cache_id}).json()['request']['analysis']['id']==first['id']
+    assert client.get(path,params={'request_id':str(uuid4())}).json()['request']=={'state':'not_found'}
+    app.dependency_overrides[verified_user]=lambda:analyst
+    other=client.get(path,params={'request_id':first_id}).json()
+    assert other['request']=={'state':'not_found'}  # Receipts belong to their requesting actor.
+    assert other['latest']['id']==first['id']  # Saved analysis remains workspace-readable.
+    assert len(calls)==1
+
+
+def test_request_status_distinguishes_pending_failed_and_unrelated_saved_answer(environment,monkeypatch):
+    app,client,owner,_,_,path,calls=setup(environment,monkeypatch)
+    client.post(path,json={'request_id':str(uuid4())})
+    request_id=str(uuid4())
+    with app.state.sessions.begin() as db:
+        existing=db.scalar(select(Audit).where(Audit.action==REQUESTED))
+        pending=Audit(workspace_id=existing.workspace_id,actor=owner,action=REQUESTED,target_id=existing.target_id,
+            details={**existing.details,'request_id':request_id})
+        db.add(pending)
+    status=client.get(path,params={'request_id':request_id}).json()
+    assert status['latest'] and status['request']=={'state':'pending'}
+    with app.state.sessions.begin() as db:
+        db.add(Audit(workspace_id=pending.workspace_id,actor=owner,action=FAILED,target_id=pending.target_id,
+            details={'request_record_id':pending.id,'error_code':'provider_unavailable'}))
+    assert client.get(path,params={'request_id':request_id}).json()['request']=={'state':'failed'}
+    assert len(calls)==1
+
+
+def test_request_recovery_respects_auth_scope_and_uuid_validation(environment,monkeypatch):
+    app,client,_,outsider,_,path,calls=setup(environment,monkeypatch)
+    assert client.get(path,params={'request_id':'invalid'}).status_code==422
+    app.dependency_overrides[verified_user]=lambda:outsider
+    assert client.get(path,params={'request_id':str(uuid4())}).status_code==404
+    app.dependency_overrides.clear()
+    assert client.get(path,params={'request_id':str(uuid4())}).status_code==401
+    assert not calls
