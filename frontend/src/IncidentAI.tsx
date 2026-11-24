@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
+import { recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
 import './incidentAI.css'
 
 type Analysis = {
@@ -10,19 +11,35 @@ type Analysis = {
   omitted_linked_events:number; omitted_related_events:number
 }
 type State = {enabled:boolean;has_evidence:boolean;provider:string;model:string;
-  quota:{daily_used:number;daily_limit:number;monthly_used:number;monthly_limit:number};latest:Analysis|null}
+  quota:{daily_used:number;daily_limit:number;monthly_used:number;monthly_limit:number};latest:Analysis|null;
+  request?:AIRequestReceipt<Analysis>|null}
 
 export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventIds:string[] }) {
   const [state,setState]=useState<State|null>(null), [loading,setLoading]=useState(true), [busy,setBusy]=useState(false)
   const [error,setError]=useState(''), [notice,setNotice]=useState(''), [knownFailure,setKnownFailure]=useState(false)
   const [revision,setRevision]=useState(0)
   const pending=useRef<string|null>(null), submitting=useRef(false), current=useRef(0)
+  const path=`/api/incidents/${incidentId}/ai-analysis`
+  function acceptSnapshot(result:State) {
+    if(pending.current && result.request?.state==='completed' && result.request.analysis) {
+      pending.current=null
+      setError('');setKnownFailure(false)
+      setNotice('Saved AI analysis recovered automatically. No additional model call was made.')
+      setState({...result,latest:result.request.analysis})
+    } else {
+      setState(result)
+      if(result.request?.state==='failed') {
+        setKnownFailure(true)
+        setError('The AI attempt failed. It counts toward quota; a new attempt is optional and explicit.')
+      }
+    }
+  }
   const evidenceVersion=eventIds.join(',')
   useEffect(() => {
     const request=++current.current
     setLoading(true);setError('')
-    void api<State>(`/api/incidents/${incidentId}/ai-analysis`).then(result => {
-      if(current.current===request)setState(result)
+    void api<State>(path+(pending.current ? `?request_id=${pending.current}` : '')).then(result => {
+      if(current.current===request)acceptSnapshot(result)
     }).catch(failure => {
       if(current.current===request)setError(failure instanceof ApiError && failure.status===404
         ? 'AI analysis requires the latest backend deployment.' : failure instanceof Error ? failure.message : 'Could not load AI status.')
@@ -34,10 +51,11 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
     if(!state?.enabled || !state.has_evidence || submitting.current)return
     if(newAttempt)pending.current=null
     pending.current??=crypto.randomUUID()
+    const requestId=pending.current
     submitting.current=true;setBusy(true);setError('');setNotice('');setKnownFailure(false)
     const request=current.current
     try {
-      const result=await api<{cached:boolean;analysis:Analysis}>(`/api/incidents/${incidentId}/ai-analysis`,'POST',{request_id:pending.current},65000)
+      const result=await api<{cached:boolean;analysis:Analysis}>(path,'POST',{request_id:requestId},65000)
       if(current.current!==request)return
       pending.current=null
       setState(previous => previous ? {...previous,latest:result.analysis}:previous)
@@ -45,6 +63,27 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       setRevision(value=>value+1)
     } catch(failure) {
       if(current.current!==request)return
+      // A lost response does not mean generation failed. Recover this exact
+      // receipt using read-only status checks, including its saved quota.
+      if(!(failure instanceof ApiError) || failure.status>=500 || failure.status===409) {
+        setNotice('Checking the saved request automatically… No additional model call is being made.')
+        try {
+          const outcome=await recoverAIRequest(
+            ()=>api<State>(`${path}?request_id=${requestId}`),acceptSnapshot,()=>current.current===request,
+          )
+          if(current.current!==request)return
+          if(outcome==='completed')return
+          setNotice('')
+          if(outcome==='failed')return
+          setError('The connection was interrupted and automatic checks could not confirm completion. Check / retry the same request to keep its original ID; no new generation was started automatically.')
+          return
+        } catch(recoveryError) {
+          if(current.current!==request)return
+          setNotice('')
+          setError(recoveryError instanceof Error ? recoveryError.message : 'Could not check the saved AI request.')
+          return
+        }
+      }
       setError(failure instanceof Error ? failure.message : 'Could not complete AI analysis.')
       setKnownFailure(failure instanceof ApiError && [409,502].includes(failure.status))
     } finally {submitting.current=false;setBusy(false)}
