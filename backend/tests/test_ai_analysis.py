@@ -158,7 +158,7 @@ def test_request_status_distinguishes_pending_failed_and_unrelated_saved_answer(
     with app.state.sessions.begin() as db:
         db.add(Audit(workspace_id=pending.workspace_id,actor=owner,action=FAILED,target_id=pending.target_id,
             details={'request_record_id':pending.id,'error_code':'provider_unavailable'}))
-    assert client.get(path,params={'request_id':request_id}).json()['request']=={'state':'failed'}
+    assert client.get(path,params={'request_id':request_id}).json()['request']=={'state':'failed','error_code':'provider_unavailable'}
     assert len(calls)==1
 
 
@@ -170,3 +170,19 @@ def test_request_recovery_respects_auth_scope_and_uuid_validation(environment,mo
     app.dependency_overrides.clear()
     assert client.get(path,params={'request_id':str(uuid4())}).status_code==401
     assert not calls
+
+
+def test_failed_status_returns_only_allowlisted_safe_diagnostics(environment,monkeypatch):
+    app,client,owner,_,_,path,calls=setup(environment,monkeypatch)
+    def invalid(*_):raise AIProviderError('invalid_evidence_citation')
+    monkeypatch.setattr('app.ai_analysis.call_openai',invalid)
+    request_id=str(uuid4())
+    assert client.post(path,json={'request_id':request_id}).status_code==502
+    assert client.get(path,params={'request_id':request_id}).json()['request']=={
+        'state':'failed','error_code':'invalid_evidence_citation'}
+    with app.state.sessions.begin() as db:
+        failure=db.scalar(select(Audit).where(Audit.action==FAILED))
+        failure.details={**failure.details,'error_code':'private-raw-error'}
+    response=client.get(path,params={'request_id':request_id})
+    assert response.json()['request']=={'state':'failed','error_code':'provider_unavailable'}
+    assert 'private-raw-error' not in response.text

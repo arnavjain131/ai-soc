@@ -5,10 +5,14 @@ import time
 
 import httpx
 
-from .ai_grounding import GroundedAnswer, SYSTEM_INSTRUCTIONS, validate_answer
+from .ai_grounding import AnswerValidationError, SYSTEM_INSTRUCTIONS, answer_schema, validate_answer
 
-PROMPT_VERSION='1'
-REQUEST_INSTRUCTIONS=SYSTEM_INSTRUCTIONS+' Keep the answer concise and within the output budget.'
+PROMPT_VERSION='2'
+REQUEST_INSTRUCTIONS=SYSTEM_INSTRUCTIONS+''' Keep the answer concise and within the output budget.
+In observations.event_ids use evidence[].id values, never account/host aliases, incident IDs, port numbers or rule keys.
+In investigation_steps.reference_ids use references[].id values. Choose only values permitted by the response schema.
+Describe the actual supplied event types: network-flow evidence is not authentication evidence.
+Keep observations to at most four concise findings and investigation steps to at most four concise steps.'''
 
 
 class AIProviderError(Exception):
@@ -23,7 +27,7 @@ def call_openai(settings, context):
         'instructions': REQUEST_INSTRUCTIONS,
         'input': json.dumps(context, sort_keys=True),
         'text': {'format': {'type':'json_schema','name':'aisoc_incident_analysis','strict':True,
-                           'schema':GroundedAnswer.model_json_schema()}}}
+                           'schema':answer_schema(context)}}}
     try:
         deadline = time.monotonic() + 30
         with httpx.Client(timeout=httpx.Timeout(20.0,connect=5.0),follow_redirects=False) as client:
@@ -40,7 +44,12 @@ def call_openai(settings, context):
                     if time.monotonic()>deadline or len(body)+len(chunk)>131072:
                         raise AIProviderError('provider_response_limit')
                     body.extend(chunk)
-        data=json.loads(body)
+        try:
+            data=json.loads(body)
+        except (ValueError,UnicodeError):
+            raise AIProviderError('invalid_provider_json') from None
+        if not isinstance(data,dict):
+            raise AIProviderError('unexpected_provider_output')
         if data.get('status') != 'completed':
             raise AIProviderError('provider_incomplete')
         texts=[]
@@ -57,7 +66,11 @@ def call_openai(settings, context):
                 texts.append(part['text'])
         if len(texts)!=1:
             raise AIProviderError('unexpected_provider_output')
-        answer=validate_answer(json.loads(texts[0]),context).model_dump()
+        try:
+            answer_payload=json.loads(texts[0])
+        except (ValueError,TypeError):
+            raise AIProviderError('invalid_answer_json') from None
+        answer=validate_answer(answer_payload,context).model_dump()
         actual_model=data.get('model','')
         if not isinstance(actual_model,str) or not re.fullmatch(r'[a-zA-Z0-9._-]{1,100}',actual_model):
             raise AIProviderError('unexpected_provider_output')
@@ -67,6 +80,8 @@ def call_openai(settings, context):
         return {'answer':answer,'model':actual_model,'usage':token_usage}
     except AIProviderError:
         raise
+    except AnswerValidationError as failure:
+        raise AIProviderError(failure.code) from None
     except httpx.HTTPError:
         raise AIProviderError('provider_unavailable') from None
     except (ValueError,TypeError,KeyError,AttributeError):

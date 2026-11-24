@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from ipaddress import ip_address
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 CONTEXT_VERSION = '1'
@@ -123,16 +123,36 @@ class GroundedAnswer(BaseModel):
     limitations: list[str] = Field(min_length=1,max_length=6)
 
 
+class AnswerValidationError(ValueError):
+    """A safe category only; never retains model output or validation input."""
+    def __init__(self, code, message):
+        self.code=code
+        super().__init__(message)
+
+
+def answer_schema(context):
+    """Constrain generation itself, in addition to validating after inference."""
+    schema=GroundedAnswer.model_json_schema()
+    schema['$defs']['CitedObservation']['properties']['event_ids']['items']={
+        'type':'string','enum':sorted({item['id'] for item in context['evidence']})}
+    schema['$defs']['InvestigationStep']['properties']['reference_ids']['items']={
+        'type':'string','enum':sorted({item['id'] for item in context['references']})}
+    return schema
+
+
 def validate_answer(payload, context):
     if len(json.dumps(payload).encode()) > 16384:
-        raise ValueError('Model answer exceeds 16 KiB')
-    answer = GroundedAnswer.model_validate(payload)
+        raise AnswerValidationError('oversized_answer','Model answer exceeds 16 KiB')
+    try:
+        answer = GroundedAnswer.model_validate(payload)
+    except ValidationError:
+        raise AnswerValidationError('invalid_answer_schema','Model answer did not match the required structure') from None
     events = {item['id'] for item in context['evidence']}
     references = {item['id'] for item in context['references']}
     for observation in answer.observations:
         if not set(observation.event_ids) <= events:
-            raise ValueError('Model cited evidence outside the authorized context')
+            raise AnswerValidationError('invalid_evidence_citation','Model cited evidence outside the authorized context')
     for step in answer.investigation_steps:
         if not set(step.reference_ids) <= references:
-            raise ValueError('Model cited an unavailable investigation reference')
+            raise AnswerValidationError('invalid_reference_citation','Model cited an unavailable investigation reference')
     return answer

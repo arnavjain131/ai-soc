@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 
-from .ai_grounding import GroundedAnswer, build_context
+from .ai_grounding import answer_schema, build_context
 from .ai_provider import AIProviderError, call_openai, PROMPT_VERSION, REQUEST_INSTRUCTIONS
 from .memberships import lock_workspace
 from .models import Audit, Membership, now
@@ -19,6 +19,10 @@ REQUESTED='incident.ai_requested'
 COMPLETED='incident.ai_completed'
 FAILED='incident.ai_failed'
 CACHE_HIT='incident.ai_cache_hit'
+SAFE_FAILURE_CODES=frozenset(('provider_configuration','provider_rate_limited','provider_unavailable',
+    'provider_response_limit','provider_incomplete','unexpected_provider_output','provider_refused',
+    'invalid_provider_output','invalid_provider_json','invalid_answer_json','invalid_answer_schema',
+    'invalid_evidence_citation','invalid_reference_citation','oversized_answer'))
 
 
 class AnalysisRequest(BaseModel):
@@ -28,7 +32,7 @@ class AnalysisRequest(BaseModel):
 
 def context_hash(context, model):
     value=json.dumps({'context':context,'model':model,'instructions':REQUEST_INSTRUCTIONS,
-        'prompt_version':PROMPT_VERSION,'schema':GroundedAnswer.model_json_schema()},sort_keys=True,separators=(',',':'))
+        'prompt_version':PROMPT_VERSION,'schema':answer_schema(context)},sort_keys=True,separators=(',',':'))
     return hashlib.sha256(value.encode()).hexdigest()
 
 
@@ -83,7 +87,10 @@ def request_status(session, identity, incident_id, request_id, digest):
         return {'state':'completed','analysis':present(complete,digest)}
     failed=session.scalar(query.where(Audit.action==FAILED,
         Audit.details['request_record_id'].as_string()==receipt.id))
-    return {'state':'failed' if failed else 'pending'}
+    if failed:
+        code=failed.details.get('error_code')
+        return {'state':'failed','error_code':code if code in SAFE_FAILURE_CODES else 'provider_unavailable'}
+    return {'state':'pending'}
 
 
 def reserve(session, identity, incident_id, payload, context, settings):
