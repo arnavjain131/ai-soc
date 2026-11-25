@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, ArrowDownRight, ArrowRight, Check, ChevronRight, Clock3, Database, Eye, FileSearch, LayoutDashboard, LockKeyhole, LogOut, Radio, RefreshCw, Search, Shield, ShieldAlert, Terminal, X } from 'lucide-react'
+import { Activity, ArrowRight, ChevronRight, Clock3, Database, Eye, FileSearch, LayoutDashboard, LockKeyhole, LogOut, Radio, RefreshCw, Shield, ShieldAlert, Terminal, X } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
 import { api, ApiError, supabase } from './api'
 import { AccountRecovery, SignInDialog } from './AccountAccess'
@@ -9,6 +9,8 @@ import { NetworkEvents } from './NetworkEvents'
 import { SecurityEvents } from './SecurityEvents'
 import { WorkspaceAccess } from './WorkspaceAccess'
 import { IncidentJournal } from './IncidentJournal'
+import { IncidentQueue } from './IncidentQueue'
+import { initialQueueView, type QueueView } from './incidentFilters'
 import { SourceHealth, SourceStatus } from './TelemetryHealth'
 import { demoIncidents, demoSources, demoStats } from './demo'
 import type { Detail, Incident, IncidentStatus, Source, Stats } from './types'
@@ -57,11 +59,10 @@ function App() {
   const [access, setAccess] = useState<'loading' | 'allowed' | 'missing' | 'expired' | 'error'>('loading')
   const [error, setError] = useState(''), [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false)
-  const [incidents, setIncidents] = useState<Incident[]>(demoIncidents)
   const [stats, setStats] = useState<Stats>(demoStats), [sources, setSources] = useState<Source[]>(demoSources)
   const [detail, setDetail] = useState<Detail | null>(null)
   const [journalRefresh, setJournalRefresh] = useState(0)
-  const [search, setSearch] = useState(''), [status, setStatus] = useState('all')
+  const [queueSaved,setQueueSaved]=useState<{boundary:string;view:QueueView}|null>(null)
   const [tab, setTab] = useState<'overview' | 'incidents' | 'sources' | 'network' | 'events' | 'members'>('overview')
   const [networkRefresh, setNetworkRefresh] = useState(0)
   const [eventsRefresh, setEventsRefresh] = useState(0)
@@ -91,23 +92,25 @@ function App() {
     const requestedBoundary = boundary
     setError(''); setBusy(true)
     try {
-      if (mode === 'demo') { setIncidents(demoIncidents); setStats(demoStats); setSources(demoSources) }
+      if (mode === 'demo') { setStats(demoStats); setSources(demoSources) }
       else {
         const identity = await api<{ role: string }>('/api/me')
         if (boundaryRef.current !== requestedBoundary) return
-        const [items, counts, sensors] = await Promise.all([api<Incident[]>('/api/incidents?limit=100'), api<Stats>('/api/dashboard/stats'), api<Source[]>('/api/sources')])
+        const [counts, sensors] = await Promise.all([api<Stats>('/api/dashboard/stats'), api<Source[]>('/api/sources')])
         if (boundaryRef.current !== requestedBoundary) return
-        setIncidents(items); setStats(counts); setSources(sensors); setRole(identity.role)
+        setStats(counts); setSources(sensors); setRole(identity.role)
         setAccess('allowed')
         setSourcesCheckedAt(Date.now()); setSourceNow(Date.now())
       }
+      setQueueSaved(previous=>({boundary:requestedBoundary,view:previous?.boundary===requestedBoundary
+        ? {...previous.view,request:{...previous.view.request,offset:0,asOf:undefined}} : initialQueueView}))
       setLoaded(true)
     } catch (e) {
       if (boundaryRef.current === requestedBoundary) {
         setError(e instanceof Error ? e.message : 'Could not load the workspace.')
         setAccess(e instanceof ApiError && e.status === 403 ? 'missing' : e instanceof ApiError && e.status === 401 ? 'expired' : 'error')
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-          setDetail(null); setIncidents([]); setSources([]); setSourceToken(''); setRole(''); setLoaded(false)
+          setDetail(null); setSources([]); setSourceToken(''); setRole(''); setLoaded(false)
           setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 })
         }
       }
@@ -120,7 +123,7 @@ function App() {
     setSourcesCheckedAt(null)
     setAccess('loading')
     // Clear data before switching boundaries so private failures never show demo metrics as real.
-    setIncidents([]); setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 }); setSources([])
+    setQueueSaved(null); setStats({ events: 0, alerts: 0, incidents: 0, sources: 0, open_incidents: 0 }); setSources([])
     if (mode === 'demo' || session) void refresh()
   }, [mode, session?.access_token])
 
@@ -151,7 +154,7 @@ function App() {
     finally { if (boundaryRef.current === requestedBoundary) setBusy(false) }
   }
 
-  const filtered = incidents.filter(i => (status === 'all' || i.status === status) && `${i.title} ${i.id}`.toLowerCase().includes(search.toLowerCase()))
+  const queueView=queueSaved?.boundary===boundary ? queueSaved.view : initialQueueView
   const privateLocked = mode === 'private' && !session
 
   async function createSource(event: React.FormEvent) {
@@ -221,12 +224,7 @@ function App() {
               { label: 'Security events', value: stats.events, icon: Database, note: 'Persisted security records', accent: 'blue' },
               { label: 'Registered sources', value: stats.sources, icon: Radio, note: mode === 'demo' ? 'Synthetic fixture source' : 'Configured telemetry sources', accent: 'green' },
             ].map(metric => <section className={`metric ${metric.accent}`} key={metric.label}><div><span>{metric.label}</span><metric.icon size={18}/></div><strong>{loaded ? metric.value.toLocaleString() : '—'}</strong><p>{metric.note}</p></section>)}</div>
-            <div className="overview-grid"><section className="panel queue"><div className="panel-heading"><div><h2>Incident queue <span className="count">{incidents.length}</span></h2><p>Prioritized findings that need a closer look.</p></div><span className="small muted">LATEST 100</span></div>
-              <div className="filters"><label className="search"><Search size={16}/><input aria-label="Search incidents" placeholder="Search incidents…" value={search} onChange={e => setSearch(e.target.value)}/></label><select aria-label="Filter by status" value={status} onChange={e => setStatus(e.target.value)}><option value="all">All statuses</option>{['open', 'investigating', 'closed', 'false_positive'].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select></div>
-              <div className="table-wrap"><table><thead><tr><th>INCIDENT</th><th>SEVERITY</th><th>STATUS</th><th>RISK</th><th><span className="sr-only">Open</span></th></tr></thead><tbody>{filtered.map(item => <tr key={item.id}><td><button className="incident-link" onClick={() => void openIncident(item)}><span className="incident-symbol"><ShieldAlert size={18}/></span><span>{item.title}<small>{date(item.created_at)}</small></span></button></td><td><span className="severity">{item.severity}</span></td><td><span className={`status ${item.status}`}><span/>{statusLabel(item.status)}</span></td><td><strong className="risk-cell">{item.risk_score}</strong><span className="muted"> /100</span></td><td><button className="icon-button" disabled={busy} aria-label={`Investigate ${item.title}`} onClick={() => void openIncident(item)}><ArrowDownRight size={18}/></button></td></tr>)}</tbody></table></div>
-              {!filtered.length && <div className="empty"><FileSearch size={26}/><p>{busy ? 'Loading incidents…' : error ? 'Workspace data could not be loaded. Check the error above and refresh.' : 'No incidents match this view.'}</p></div>}
-              <div className="table-footer"><span>{filtered.length} of {incidents.length} loaded incidents</span><span>Rule-based detection <Check size={13}/></span></div>
-            </section><div className="stack"><section className="panel pipeline"><div className="panel-heading"><h2>Detection pipeline</h2><Activity size={17}/></div><p className="muted small">Every finding has a traceable path.</p>{[{ label: 'Collect & normalize', note: 'Validated security events', icon: Database }, { label: 'Evaluate rules', note: 'Transparent detection logic', icon: Shield }, { label: 'Build incidents', note: 'Linked evidence & risk score', icon: FileSearch }].map((step, i) => <div className="pipeline-step" key={step.label}><span><step.icon size={17}/></span><div><strong>{step.label}</strong><p>{step.note}</p></div><small>0{i + 1}</small></div>)}</section><section className="ai-card"><div className="eyebrow">PRIVATE INCIDENT ANALYSIS</div><h2>Investigation, grounded<br/>in your evidence.</h2><p>Open a private incident for evidence-cited AI interpretation and investigation references. Provider activation is controlled by the project owner.</p><span><LockKeyhole size={13}/> AI availability is shown inside each private incident</span></section></div></div>
+            <div className={tab==='incidents' ? 'overview-grid incident-list-layout' : 'overview-grid'}><IncidentQueue key={boundary} mode={mode} view={queueView} onViewChange={view=>{if(boundaryRef.current===boundary)setQueueSaved({boundary,view})}} onOpen={item=>void openIncident(item)} disabled={busy}/><div className="stack"><section className="panel pipeline"><div className="panel-heading"><h2>Detection pipeline</h2><Activity size={17}/></div><p className="muted small">Every finding has a traceable path.</p>{[{ label: 'Collect & normalize', note: 'Validated security events', icon: Database }, { label: 'Evaluate rules', note: 'Transparent detection logic', icon: Shield }, { label: 'Build incidents', note: 'Linked evidence & risk score', icon: FileSearch }].map((step, i) => <div className="pipeline-step" key={step.label}><span><step.icon size={17}/></span><div><strong>{step.label}</strong><p>{step.note}</p></div><small>0{i + 1}</small></div>)}</section><section className="ai-card"><div className="eyebrow">PRIVATE INCIDENT ANALYSIS</div><h2>Investigation, grounded<br/>in your evidence.</h2><p>Open a private incident for evidence-cited AI interpretation and investigation references. Provider activation is controlled by the project owner.</p><span><LockKeyhole size={13}/> AI availability is shown inside each private incident</span></section></div></div>
           </>}
         </>}
         <footer><span><Shield size={13}/>AI SOC Assistant</span><span>Collect. Detect. Investigate.</span><span>Foundation · November 2026</span></footer>
