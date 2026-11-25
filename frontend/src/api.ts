@@ -24,3 +24,21 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, timeo
   if (!response.ok) throw new ApiError(response.status, typeof data.detail === 'string' ? data.detail : 'The API could not complete this request.')
   return data as T
 }
+
+export async function apiReport(path:string,format:'html'|'json',signal:AbortSignal):Promise<Blob> {
+  if(!supabase)throw new Error('Supabase configuration is required for the private workspace.')
+  const {data:{session}}=await supabase.auth.getSession()
+  if(!session)throw new Error('Sign in to continue.')
+  const response=await fetch(base+path,{headers:{Authorization:`Bearer ${session.access_token}`},
+    cache:'no-store',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(45000)])})
+  if(!response.ok) {
+    const data=await response.json().catch(()=>({}))
+    throw new ApiError(response.status,typeof data.detail==='string'?data.detail:'Could not generate the incident report.')
+  }
+  const expected=format==='html'?'text/html':'application/json'
+  if(!response.headers.get('Content-Type')?.toLowerCase().startsWith(expected))throw new Error('The server did not return the requested report format.')
+  if(Number(response.headers.get('Content-Length'))>8*1024*1024)throw new Error('The report exceeds the download size limit.')
+  const blob=await response.blob()
+  if(blob.size>8*1024*1024)throw new Error('The report exceeds the download size limit.')
+  return blob
+}

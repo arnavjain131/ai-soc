@@ -11,6 +11,7 @@ import { WorkspaceAccess } from './WorkspaceAccess'
 import { IncidentJournal } from './IncidentJournal'
 import { IncidentQueue } from './IncidentQueue'
 import { IncidentAssignment } from './IncidentAssignment'
+import { IncidentReport } from './IncidentReport'
 import { initialQueueView, type QueueView } from './incidentFilters'
 import { SourceHealth, SourceStatus } from './TelemetryHealth'
 import { demoIncidents, demoSources, demoStats } from './demo'
@@ -216,6 +217,7 @@ function App() {
               <section className="panel"><div className="panel-heading"><h2>Detection rationale</h2></div>{detail.alerts.map(alert => <div className="rationale" key={alert.id}><code>{alert.rule_key}</code><p>{alert.explanation}</p></div>)}</section>
               <section className="panel disposition"><h2>Analyst disposition</h2><label htmlFor="disposition">Incident status</label><select id="disposition" value={detail.status} disabled={busy || ['closed', 'false_positive'].includes(detail.status)} onChange={e => void changeStatus(e.target.value as IncidentStatus)}>{['open', 'investigating', 'closed', 'false_positive'].map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}</select></section></div>
             </div>
+            {mode === 'private' && <IncidentReport key={`report:${boundary}:${detail.id}`} incidentId={detail.id}/>}
             {mode === 'private' && <IncidentAssignment key={`assignment:${boundary}:${detail.id}`} incidentId={detail.id} viewerId={session?.user.id} refreshKey={detail.updated_at} onChanged={()=>setJournalRefresh(value=>value+1)}/>}
             {mode === 'private' && <IncidentJournal key={`${boundary}:${detail.id}`} incidentId={detail.id} viewerId={session?.user.id} refreshKey={`${detail.updated_at}:${detail.status}:${journalRefresh}`}/>}
             {mode === 'private' && <React.Suspense fallback={<p role="status">Loading AI panel…</p>}><IncidentAI key={`${boundary}:${detail.id}`} incidentId={detail.id} eventIds={[...detail.events,...(detail.related_network_events ?? [])].map(event=>event.id)}/></React.Suspense>}
