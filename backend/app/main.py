@@ -22,10 +22,11 @@ from .memberships import install_membership_routes
 from .ai_analysis import install_ai_routes
 from .incident_search import install_incident_search
 from .incident_assignment import install_assignment_routes
+from .incident_report import install_report_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.9.0'
+API_VERSION = '0.10.0'
 
 
 def token_hash(token):
@@ -293,6 +294,7 @@ def create_app(settings=None):
     install_security_event_routes(api, member, session_dependency)
     install_incident_journal_routes(api, member, session_dependency, authorized_incident)
     install_assignment_routes(api,member,session_dependency,authorized_incident)
+    install_report_routes(api,member)
     install_membership_routes(api, member, session_dependency)
     install_ai_routes(api, member, session_dependency, authorized_incident, detail)
     return api

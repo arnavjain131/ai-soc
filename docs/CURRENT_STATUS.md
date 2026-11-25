@@ -2,7 +2,15 @@
 
 Updated 25 November 2026. Keep credentials in ignored local configuration.
 
-## Current: incident ownership and assignee tracking
+## Current: incident reporting and download
+
+The owner confirmed hosted incident ownership is working. API 0.10.0 now adds authorized HTML/JSON incident report exports with normalized linked evidence, separate related network context, ownership, notes, investigation history and optional latest saved AI analysis. Export never invokes a model or writes audit/data records. HTML is self-contained, print-styled and escaped, with internal evidence citations and a restrictive policy; JSON carries report version/counts/provenance. No credentials or arbitrary raw event payloads are serialized. See `docs/INCIDENT_REPORTS.md`.
+
+PostgreSQL reads use a read-only repeatable snapshot and fresh membership verification before response delivery. Row/file bounds fail explicitly rather than silently producing incomplete reports. A real disposable-local PostgreSQL test verified isolation/read-only settings and a concurrent title/note change appearing only on the next export. The disposable database was removed and the local server stopped; the restored database and Supabase were untouched.
+
+Validation: **170 backend tests passed / 7 opt-in PostgreSQL tests skipped**, with the new PostgreSQL snapshot case passed separately; **34 frontend tests** and the production build passed. Tests cover inclusion/exclusion, preserved saved/outdated AI without inference, scoped/revoked access, final access recheck, escaping and credential exclusion, filename/format validation and size limits. The synthetic browser fixture downloaded an HTML report whose local contents were independently checked for all five evidence events, one related flow, saved synthetic analysis, ownership and a note. JSON response completeness is covered by backend tests and its download controls were exercised; no local JSON file was materialized through the in-app browser artifact copy. The HTML report was visually inspected through a synthetic localhost preview. Fixture processes were stopped. No real incident report or private data was exported during testing and no paid model call ran. Deployment pending.
+
+## Earlier: incident ownership and assignee tracking
 
 API 0.9.0 adds ownership without schema migration: the latest append-only `incident.assignment_changed` entry projects the current assignee/revision. Approved admins and analysts can select only approved members in their own workspace, reassign or unassign, and inspect before/after/actor/time in incident history. Assignment does not grant access, change status, notify members or invoke AI. Inactive owners are preserved and marked for reassignment. No-op retries have separate hidden receipt events rather than fake change history. Existing nine-table backup scope includes this state.
 
