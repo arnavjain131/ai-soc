@@ -2,7 +2,15 @@
 
 Updated 25 November 2026. Keep credentials in ignored local configuration.
 
-## Current: incident search, filtering and pagination
+## Current: incident ownership and assignee tracking
+
+API 0.9.0 adds ownership without schema migration: the latest append-only `incident.assignment_changed` entry projects the current assignee/revision. Approved admins and analysts can select only approved members in their own workspace, reassign or unassign, and inspect before/after/actor/time in incident history. Assignment does not grant access, change status, notify members or invoke AI. Inactive owners are preserved and marked for reassignment. No-op retries have separate hidden receipt events rather than fake change history. Existing nine-table backup scope includes this state.
+
+Queue owner summaries are read in batches and filters support me/unassigned/inactive/specific UUID. A paginated approved-member directory exposes account UUID/role/self only, without emails or Auth credentials. Writes use workspace then incident locks, fresh actor/assignee validation, expected revision and payload-bound UUID receipts. Stale edits return conflict; retries cannot reapply older assignments. The UI refreshes history after saving and keeps unchanged requests stable after network errors. See `docs/INCIDENT_ASSIGNMENT.md`.
+
+Validation: **163 backend tests passed / 6 optional PostgreSQL tests skipped**, with all six PostgreSQL cases passed separately; **32 frontend tests** and the production build passed. A synthetic localhost browser verified selecting self, saving ownership and audit, filtering to one assigned incident, then unassigning and seeing both history entries. Six native PostgreSQL concurrency tests passed separately on a fresh disposable loopback database, including the three existing access/AI cases and new duplicate/stale assignment and revocation-race cases. Additional PostgreSQL assertions verified assignee projection/filter SQL. Test databases were removed and the local lab stopped. No hosted assignments, memberships, telemetry, provider settings or keys were changed; no paid AI call was made. Deployment pending.
+
+## Earlier: incident search, filtering and pagination
 
 The owner confirmed that the revised port-scan AI generation and saved-result loading now work. This is owner-reported hosted acceptance; no extra paid call was run by the agent. Earlier AI diagnosis/history is retained below.
 

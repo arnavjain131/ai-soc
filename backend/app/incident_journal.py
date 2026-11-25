@@ -10,7 +10,7 @@ from .models import Audit, Incident
 
 
 NOTE_ACTION = 'incident.note_added'
-HISTORY_ACTIONS = (NOTE_ACTION, 'incident.status_changed')
+HISTORY_ACTIONS = (NOTE_ACTION, 'incident.status_changed', 'incident.assignment_changed')
 
 
 class NoteCreate(BaseModel):
@@ -41,6 +41,10 @@ def audit_json(row):
         allowed = ('open', 'investigating', 'closed', 'false_positive')
         details = {key: row.details.get(key) if row.details.get(key) in allowed else None
                    for key in ('before', 'after')}
+    elif row.action == 'incident.assignment_changed':
+        for key in ('before','after'):
+            try:details[key]=str(UUID(row.details[key])) if row.details.get(key) else None
+            except (ValueError,TypeError,AttributeError):details[key]=None
     return common_json(row) | {'action': row.action, 'details': details}
 
 

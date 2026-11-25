@@ -21,10 +21,11 @@ from .request_limits import Admission, RequestProtection
 from .memberships import install_membership_routes
 from .ai_analysis import install_ai_routes
 from .incident_search import install_incident_search
+from .incident_assignment import install_assignment_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.8.0'
+API_VERSION = '0.9.0'
 
 
 def token_hash(token):
@@ -142,7 +143,7 @@ def create_app(settings=None):
     api.add_middleware(BodyLimit)
     api.add_middleware(RequestProtection, admission=api.state.admission)
     api.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.origins.split(',')],
-                       allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'],
+                       allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type', 'X-Source-Token'],
                        expose_headers=['Retry-After'])
 
     @api.get('/health/live')
@@ -291,6 +292,7 @@ def create_app(settings=None):
 
     install_security_event_routes(api, member, session_dependency)
     install_incident_journal_routes(api, member, session_dependency, authorized_incident)
+    install_assignment_routes(api,member,session_dependency,authorized_incident)
     install_membership_routes(api, member, session_dependency)
     install_ai_routes(api, member, session_dependency, authorized_incident, detail)
     return api

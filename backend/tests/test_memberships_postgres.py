@@ -56,6 +56,8 @@ def test_concurrent_ai_reservations_cannot_double_debit_or_bypass_quota(same_req
     from fastapi import HTTPException
     from app.auth import Identity
     from app.ai_analysis import AnalysisRequest,REQUESTED,reserve
+    from app.ai_grounding import build_context
+    from test_ai_grounding import incident
     from app.config import Settings
     target=os.getenv('SOC_TEST_POSTGRES_URL')
     if not target:pytest.skip('Requires an isolated disposable local PostgreSQL database')
@@ -75,12 +77,13 @@ def test_concurrent_ai_reservations_cannot_double_debit_or_bypass_quota(same_req
         request_ids=[uuid4(),uuid4()]
         if same_request:request_ids[1]=request_ids[0]
         incident_id=str(uuid4())
+        context=build_context(incident())
         barrier=Barrier(2)
         def attempt(request_id):
             with sessions() as db:
                 barrier.wait(timeout=10)
                 try:
-                    reservation,cached=reserve(db,identity,incident_id,AnalysisRequest(request_id=request_id),{},settings)
+                    reservation,cached=reserve(db,identity,incident_id,AnalysisRequest(request_id=request_id),context,settings)
                     assert reservation is not None and cached is None
                     return 'reserved'
                 except HTTPException as error:
