@@ -3,7 +3,8 @@ import os
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import text,create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app import incident_report
 from app.auth import verified_user
@@ -45,3 +46,22 @@ def test_report_is_read_only_repeatable_snapshot_while_writer_commits(postgres,m
         second=client.get(path)
         assert second.status_code==200 and second.json()['incident']['title']=='After concurrent commit'
         assert len(second.json()['analyst_notes'])==1
+
+
+def test_report_releases_auth_read_before_snapshot_with_one_connection(postgres):
+    user=str(uuid4())
+    with postgres.begin() as db:
+        workspace=Workspace(name='Synthetic constrained pool');db.add(workspace);db.flush()
+        db.add(Membership(user_id=user,workspace_id=workspace.id,role='admin'))
+        incident=Incident(workspace_id=workspace.id,title='One connection export');db.add(incident);db.flush()
+    target=os.environ['SOC_TEST_POSTGRES_URL']
+    app=create_app(Settings(database_url=target,supabase_url='https://example.supabase.co',supabase_key='synthetic',ai_enabled=False,openai_api_key=''))
+    app.state.engine.dispose()
+    small=create_engine(target,pool_size=1,max_overflow=0,pool_timeout=1,hide_parameters=True)
+    app.state.engine=small;app.state.sessions=sessionmaker(small,expire_on_commit=False)
+    app.dependency_overrides[verified_user]=lambda:user
+    try:
+        with TestClient(app) as client:
+            response=client.get('/api/incidents/'+incident.id+'/report?format=json')
+            assert response.status_code==200 and response.json()['incident']['title']=='One connection export'
+    finally:small.dispose()

@@ -168,11 +168,15 @@ def html_report(report):
 REPORT_CSS='''*{box-sizing:border-box}body{font:14px/1.6 system-ui,sans-serif;color:#172c39;background:#fff;max-width:1100px;margin:36px auto;padding:0 28px}header{border-bottom:3px solid #287e78;padding-bottom:20px}.brand{font-size:11px;letter-spacing:2px;color:#287e78}h1{font-size:28px;line-height:1.3;overflow-wrap:anywhere}h2{font-size:20px;border-bottom:1px solid #cbd7da;padding-bottom:8px}h3{font-size:15px}section{margin-top:32px}p,td,li{overflow-wrap:anywhere;white-space:pre-wrap}.muted,footer{color:#536976;font-size:12px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{text-align:left;vertical-align:top;border:1px solid #ced9dd;padding:8px;font-size:12px}th{background:#eef4f4}article{margin:18px 0}a{color:#176860}.warning{border-left:4px solid #a67416;padding:10px;background:#fff9e9}footer{margin:40px 0 20px;border-top:1px solid #ced9dd;padding-top:15px}@page{size:A4;margin:15mm}@media print{body{max-width:none;margin:0;padding:0;font-size:11px}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}a{color:inherit;text-decoration:none}th,td{font-size:9px}section{margin-top:20px}}'''
 
 
-def install_report_routes(api,member):
+def install_report_routes(api,member,session_dependency):
     @api.get('/api/incidents/{incident_id}/report')
-    def report(incident_id:str,request:Request,format:Literal['html','json']='html',include_ai:bool=True,identity=Depends(member)):
+    def report(incident_id:str,request:Request,format:Literal['html','json']='html',include_ai:bool=True,
+               identity=Depends(member),auth_session=Depends(session_dependency)):
         try:incident_id=str(UUID(incident_id))
         except ValueError:raise HTTPException(404,'Incident not found') from None
+        # The cached membership dependency only reads. Return its connection
+        # before taking a report snapshot, even when the pool has one slot.
+        auth_session.rollback()
         engine=request.app.state.engine
         with engine.connect() as connection:
             if engine.dialect.name=='postgresql':connection=connection.execution_options(isolation_level='REPEATABLE READ')

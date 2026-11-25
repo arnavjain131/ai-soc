@@ -16,7 +16,7 @@ The report includes private usernames, network addresses and analyst notes. It e
 
 ## Snapshot and completeness
 
-Production PostgreSQL exports read incident, evidence, notes, ownership, history and saved AI within one read-only repeatable-read transaction. A change committed during the read appears in a subsequent report, not halfway through the first one. Current membership is rechecked after rendering and before delivery. SQLite development exports are best-effort reads; the production snapshot guarantee relies on PostgreSQL.
+Production PostgreSQL exports read incident, evidence, notes, ownership, history and saved AI within one read-only repeatable-read transaction. A change committed during the read appears in a subsequent report, not halfway through the first one. The authentication lookup releases its connection before the report snapshot, so even a one-connection pool can serve exports. Current membership is rechecked after rendering and before delivery. SQLite development exports are best-effort reads; the production snapshot guarantee relies on PostgreSQL.
 
 Bounds are explicit: at most 1,000 linked events, 1,000 related network records, 500 notes, 2,000 history entries, 100 alerts and 100 authentication endpoint groups. JSON payloads are capped at 4 MiB and downloaded files at 8 MiB. Exceeding a bound returns HTTP 413 and generates no partial report. The export's related-network query is not silently capped by the dashboard's 50-record display limit. It uses the existing TCP endpoint/two-minute association semantics and excludes linked events from the contextual section.
 
@@ -24,6 +24,6 @@ A report is an application investigation snapshot, not a packet capture, databas
 
 ## API
 
-API 0.10.0 adds authorized `GET /api/incidents/{id}/report?format=html|json&include_ai=true|false` (default HTML, AI included if already saved). Format is validated, IDs become canonical UUID filenames, queries remain workspace-scoped, and responses are attachments with `no-store, private`, `nosniff` and restrictive content-security/referrer headers. Browser requests send the existing session only in the Authorization header; no token is placed in the download URL. The frontend aborts an in-flight export on incident/account boundary changes to avoid downloading a stale response after leaving the view.
+API 0.10.1 adds authorized `GET /api/incidents/{id}/report?format=html|json&include_ai=true|false` (default HTML, AI included if already saved). Format is validated, IDs become canonical UUID filenames, queries remain workspace-scoped, and responses are attachments with `no-store, private`, `nosniff` and restrictive content-security/referrer headers. Browser requests send the existing session only in the Authorization header; no token is placed in the download URL. The frontend aborts an in-flight export on incident/account boundary changes to avoid downloading a stale response after leaving the view.
 
 Export is read-only: it does not mutate status, assignments, notes, evidence, AI quota, database schema, collector checkpoints or credentials. It uses the existing nine-table schema and needs no migration, provider account, new service or new runtime dependency.
