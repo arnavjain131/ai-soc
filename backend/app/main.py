@@ -20,10 +20,11 @@ from .incident_journal import install_incident_journal_routes
 from .request_limits import Admission, RequestProtection
 from .memberships import install_membership_routes
 from .ai_analysis import install_ai_routes
+from .incident_search import install_incident_search
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.7.2'
+API_VERSION = '0.8.0'
 
 
 def token_hash(token):
@@ -218,6 +219,8 @@ def create_app(settings=None):
         if not incident:
             raise HTTPException(404, 'Incident not found')
         return incident
+
+    install_incident_search(api,member,session_dependency,incident_json)
 
     @api.get('/api/incidents/{incident_id}')
     def detail(incident_id: str, identity=Depends(member), session=Depends(session_dependency)):

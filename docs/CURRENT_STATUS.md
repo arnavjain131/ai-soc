@@ -2,7 +2,17 @@
 
 Updated 25 November 2026. Keep credentials in ignored local configuration.
 
-## Current: AI activated; automatic lost-response recovery
+## Current: incident search, filtering and pagination
+
+The owner confirmed that the revised port-scan AI generation and saved-result loading now work. This is owner-reported hosted acceptance; no extra paid call was run by the agent. Earlier AI diagnosis/history is retained below.
+
+API 0.8.0 adds a separate read-only `/api/incidents/search` endpoint with all-record title/ID search, status/severity/detection/creation-time filters, newest/oldest/risk sorting, matching counts and bounded pagination. Literal wildcard characters are escaped and all queries/counts stay workspace-scoped. A server creation cutoff carries across pages; mutable status/risk changes can still affect results. The legacy list API is preserved; no database migration or existing record changes are needed.
+
+The queue UI replaces the latest-100 browser-only filter, supports 10/25/50/100 rows and local-time date inputs, preserves queue position across incident inspection, and isolates state by account/session/demo boundary. Applying filters or refreshing resets paging appropriately. The public demo uses only its synthetic records. Errors clear stale page rows and expose retry; no private error falls back to demo results. See `docs/INCIDENT_QUEUE.md`.
+
+Validation: **150 backend tests passed / 3 optional PostgreSQL tests skipped**, **29 frontend tests passed**, production build passed. Synthetic tests cover 132 incidents across page boundaries, counts, all filters, literal SQL-like text, timezone validation, stable insertion cutoff, workspace isolation/revoked access and legacy compatibility. A localhost in-memory fixture verified 37-row pagination, return to page 2 after opening an incident, and detection filtering to 19 matches with page reset. Fixture processes were stopped. No production telemetry or model call was generated. Deployment verification is pending.
+
+## Earlier: AI activated; automatic lost-response recovery
 
 ### Follow-up: port-scan model output rejection (25 November)
 
