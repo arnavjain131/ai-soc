@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
-import { recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
+import { aiFailureMessage, recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
 import './incidentAI.css'
 
 type Analysis = {
@@ -30,7 +30,7 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       setState(result)
       if(result.request?.state==='failed') {
         setKnownFailure(true)
-        setError('The AI attempt failed. It counts toward quota; a new attempt is optional and explicit.')
+        setError(aiFailureMessage(result.request.error_code))
       }
     }
   }
@@ -100,7 +100,7 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <p className="muted">Generating sends selected timestamps, event IDs/types, ports, protocol, stored priority and approved investigation references to OpenAI. Account names and IPs use aliases; raw logs, note text and sensor signature text are excluded. This does not make the context anonymous.</p>
         <p className="small muted">Generation attempts: {state.quota.daily_used}/{state.quota.daily_limit} today · {state.quota.monthly_used}/{state.quota.monthly_limit} this UTC month. Failed attempts count. Unchanged saved analyses are reused.</p>
         {!state.has_evidence && <p>No linked evidence is available for model interpretation.</p>}
-        <div className="ai-actions"><button className="primary" disabled={busy || loading || !state.enabled || !state.has_evidence} onClick={()=>void analyze()}>{busy ? 'Analyzing evidence…' : pending.current ? 'Check / retry same request' : 'Analyze incident'}</button>
+        <div className="ai-actions"><button className="primary" disabled={busy || loading || (!knownFailure && (!state.enabled || !state.has_evidence))} onClick={()=>knownFailure ? setRevision(value=>value+1) : void analyze()}>{busy ? 'Analyzing evidence…' : knownFailure ? 'Check request status' : pending.current ? 'Check / retry same request' : 'Analyze incident'}</button>
           {knownFailure && <button disabled={busy || loading || !state.enabled} onClick={()=>void analyze(true)}>Start a new attempt (uses quota)</button>}
           <button disabled={busy || loading} onClick={()=>setRevision(value=>value+1)}>Refresh saved analysis</button></div>
       </>}

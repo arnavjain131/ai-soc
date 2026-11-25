@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { recoverAIRequest } from '../src/aiRequestRecovery.ts'
+import { aiFailureMessage, recoverAIRequest } from '../src/aiRequestRecovery.ts'
 
 test('lost generation response recovers the original saved result and quota with reads only', async () => {
   const snapshots = [
@@ -47,4 +47,14 @@ test('leaving the incident cancels polling and discards in-flight results',async
 test('cache-hit receipt recovers even if its saved analysis predates this request',async()=>{
   const result=await recoverAIRequest(async()=>({request:{state:'completed',analysis:{id:'existing-cache'}}}),()=>{},()=>true,async()=>{})
   assert.equal(result,'completed')
+})
+
+test('rejected model answers are distinguished from connectivity and refresh does not promise repair',()=>{
+  for(const code of ['invalid_provider_output','invalid_evidence_citation','invalid_reference_citation','invalid_answer_schema']) {
+    assert.match(aiFailureMessage(code),/format or evidence validation/)
+    assert.match(aiFailureMessage(code),/cannot repair a failed generation/)
+  }
+  assert.match(aiFailureMessage('provider_configuration'),/configuration or API key/)
+  assert.match(aiFailureMessage('provider_rate_limited'),/rate or billing limit/)
+  assert.doesNotMatch(aiFailureMessage('private-raw-error'),/private-raw-error/)
 })

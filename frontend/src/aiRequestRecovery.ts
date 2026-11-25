@@ -1,6 +1,22 @@
 export type AIRequestReceipt<A> = {
   state: 'not_found' | 'pending' | 'completed' | 'failed'
   analysis?: A
+  error_code?: string
+}
+
+export function aiFailureMessage(code?: string): string {
+  const validation = ['invalid_provider_output', 'invalid_provider_json', 'invalid_answer_json',
+    'invalid_answer_schema', 'invalid_evidence_citation', 'invalid_reference_citation',
+    'oversized_answer', 'unexpected_provider_output']
+  const reason = validation.includes(code || '')
+    ? 'The model response failed format or evidence validation and was rejected.'
+    : code === 'provider_configuration' ? 'The provider rejected the server configuration or API key.'
+    : code === 'provider_rate_limited' ? 'The provider reported a rate or billing limit.'
+    : code === 'provider_refused' ? 'The provider declined to produce an analysis.'
+    : ['provider_incomplete', 'provider_response_limit'].includes(code || '')
+      ? 'The provider response was incomplete or exceeded the response limit.'
+      : 'The provider request could not be completed.'
+  return `${reason} This attempt counts toward quota. Refreshing checks saved status only; it cannot repair a failed generation. A new attempt is optional and uses quota.`
 }
 
 // GET-only recovery: never retry generation or allocate a new request ID here.
