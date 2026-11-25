@@ -1,7 +1,8 @@
 import type { Incident } from './types'
+import {memberUUID} from './assignmentRequest.ts'
 
-export type IncidentFilters = {q:string;status:string;severity:string;rule_key:string;start_time:string;end_time:string;sort:string}
-export const emptyIncidentFilters:IncidentFilters={q:'',status:'',severity:'',rule_key:'',start_time:'',end_time:'',sort:'newest'}
+export type IncidentFilters = {q:string;status:string;severity:string;rule_key:string;start_time:string;end_time:string;sort:string;assignee:string;assignee_id:string}
+export const emptyIncidentFilters:IncidentFilters={q:'',status:'',severity:'',rule_key:'',start_time:'',end_time:'',sort:'newest',assignee:'',assignee_id:''}
 export type QueueRequest={params:Record<string,string>;offset:number;limit:number;asOf?:string}
 export type QueueView={draft:IncidentFilters;request:QueueRequest}
 export const initialQueueView:QueueView={draft:emptyIncidentFilters,request:{params:{sort:'newest'},offset:0,limit:25}}
@@ -10,6 +11,7 @@ export type IncidentPage={items:Incident[];total:number;offset:number;limit:numb
 export function incidentFilterParams(filters:IncidentFilters):Record<string,string> {
   const params:Record<string,string>={sort:filters.sort}
   for(const key of ['q','status','severity','rule_key'] as const)if(filters[key].trim())params[key]=filters[key].trim()
+  if(filters.assignee)params.assignee=filters.assignee==='member' ? memberUUID(filters.assignee_id) : filters.assignee
   for(const key of ['start_time','end_time'] as const)if(filters[key]) {
     const time=new Date(filters[key])
     if(!Number.isFinite(time.getTime()))throw new Error('Enter valid creation times.')

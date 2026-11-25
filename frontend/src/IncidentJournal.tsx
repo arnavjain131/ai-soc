@@ -96,14 +96,14 @@ export function IncidentJournal({ incidentId, viewerId, refreshKey }: {
       </>}
     </section>
     <section className="panel">
-      <div className="panel-heading"><div><h2>Incident audit history</h2><p>Recorded analyst notes and status changes, newest first.</p></div><button className="secondary" disabled={notesLoading || historyLoading || saving} onClick={() => setRevision(value => value + 1)}>Refresh history</button></div>
+      <div className="panel-heading"><div><h2>Incident audit history</h2><p>Recorded analyst notes, status and assignment changes, newest first.</p></div><button className="secondary" disabled={notesLoading || historyLoading || saving} onClick={() => setRevision(value => value + 1)}>Refresh history</button></div>
       {historyLoading && <p className="journal-feedback" role="status">Loading audit history…</p>}
       {historyError && <p className="journal-feedback login-error" role="alert">{historyError}</p>}
       {history && <>
         {!history.total && <p className="journal-feedback">No analyst actions have been recorded for this incident.</p>}
         <ol className="journal-entries">{history.items.map(entry => <li key={entry.id}>
           <div className="journal-entry-meta"><strong title={entry.actor_id}>{actor(entry)}</strong><time dateTime={entry.created_at} title={entry.created_at}>{localTime(entry.created_at)}</time></div>
-          <p>{entry.action === 'incident.note_added' ? 'Added an analyst note.' : `Changed status from ${statusName(entry.details.before)} to ${statusName(entry.details.after)}.`}</p>
+          <p>{entry.action === 'incident.note_added' ? 'Added an analyst note.' : entry.action==='incident.assignment_changed' ? `Changed assignee from ${entry.details.before||'Unassigned'} to ${entry.details.after||'Unassigned'}.` : `Changed status from ${statusName(entry.details.before)} to ${statusName(entry.details.after)}.`}</p>
         </li>)}</ol>
         {history.total > 10 && <div className="journal-pagination"><button className="secondary" disabled={!historyOffset} onClick={() => setHistoryOffset(value => Math.max(0, value - 10))}>Newer actions</button><span>{historyOffset + 1}–{historyOffset + history.items.length} of {history.total}</span><button className="secondary" disabled={!history.has_more} onClick={() => setHistoryOffset(value => value + 10)}>Older actions</button></div>}
       </>}

@@ -12,6 +12,7 @@ Confirmed access model: a public demonstration and a private, authenticated anal
 - [Current checkpoint](docs/CURRENT_STATUS.md): verified infrastructure and the next login/ingestion steps. Do not rerun migration 001 or administrator provisioning.
 - [Deployment guide](docs/DEPLOYMENT.md): publish the first working version through GitHub, Vercel, and Render.
 - [Separate Ubuntu lab](docs/UBUNTU_LAB.md): install a dedicated SSH telemetry VM, then connect a real-log collector.
+- [Incident ownership](docs/INCIDENT_ASSIGNMENT.md): assign approved members, filter responsibility, track changes and handle stale edits.
 - [Incident queue](docs/INCIDENT_QUEUE.md): all-record search, filters, sorting and pagination.
 - [Backup and isolated recovery](docs/BACKUP_RECOVERY.md): native PostgreSQL application backups, encrypted local archives, and restore-target safeguards.
 

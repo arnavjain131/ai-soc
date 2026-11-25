@@ -1,4 +1,5 @@
 export type IncidentStatus = 'open' | 'investigating' | 'closed' | 'false_positive'
+export type Assignment={assignee_id:string|null;revision:string|null;active:boolean;is_self:boolean}
 export type SecurityEvent = { id: string; event_time: string; event_type: string; username: string; source_ip: string; destination_ip: string; destination_port: number }
 export type NetworkEvent = {
   id: string
@@ -20,6 +21,7 @@ export function networkAddress(ip: string, port: number) {
 export type Incident = {
   id: string; title: string; status: IncidentStatus; severity: string; risk_score: number;
   score_components: Record<string, number>; created_at: string; updated_at: string;
+  assignment?: Assignment
 }
 export type Detail = Incident & {
   alerts: { id: string; rule_key: string; explanation: string }[]
