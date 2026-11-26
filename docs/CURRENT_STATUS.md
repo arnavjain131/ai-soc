@@ -2,6 +2,12 @@
 
 Updated 26 November 2026. Keep credentials in ignored local configuration.
 
+## Current: approved investigation knowledge (release preparation)
+
+API 0.12.0 adds repository-owned, versioned procedures with rule-gated local keyword retrieval: four documents / nine sections, up to three retrieved sections alongside the existing rule reference (four total). Citation IDs, document/section versions, content hashes and corpus fingerprint are preserved in saved AI context. The UI provides expandable guidance for new answers; HTML/JSON reports retain retrieved text and provenance. No uploads, live web fetches, embeddings, historical-case search, schema change or new provider key. See `docs/AI_KNOWLEDGE.md`.
+
+Tests cover question relevance, rule eligibility, deterministic bounds, invalid library/source rejection, retrieved citation allowlists, exact-question freshness, old-answer preservation, no debit when knowledge cannot be prepared, and escaped report excerpts. Backend: 190 passed / eight optional PostgreSQL tests skipped. Frontend: 35 tests passed and production build passed (existing bundle-size warning). Backend-first deployment is in progress. Existing answers will be marked outdated after the corpus/prompt update, remain readable and will not regenerate automatically. No paid API call has been made for this milestone.
+
 ## Current: incident investigation questions (deployed)
 
 Hosted acceptance and navigation fix, 26 November: the owner generated two successful question answers. The agent confirmed both were saved; the reported opening problem was a UI visibility defect (the answer changed below the viewport). Frontend fix `e90d529` is published on Vercel (`index-DH4fnTmm.js` / `IncidentAI-eQjaT62d.js`). Opening a saved title now focuses and scrolls the answer region into view, labels the question prominently and marks the selected history button. Verified both real saved answers, repeated selection and return to the incident summary. Result top was approximately 24 px and focus was on the answer region. Usage stayed 2/3 daily and 5/30 monthly; no new provider call was made during diagnosis or verification. Frontend 35 tests and production build passed. Earlier pending-acceptance notes below are superseded by this check.

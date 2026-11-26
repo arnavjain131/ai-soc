@@ -1,0 +1,41 @@
+{
+  "version": "2026-11-26.1",
+  "documents": [
+    {
+      "id": "authentication-review", "title": "AISOC authentication investigation procedure", "version": "1",
+      "rules": ["brute_force_v1", "password_spray_v1"],
+      "source_url": "https://attack.mitre.org/techniques/T1110/001/",
+      "sections": [
+        {"id": "auth-pattern", "title": "Authentication detection rationale", "keywords": ["flagged", "failed", "failures", "brute", "force", "spray", "spraying", "trigger"], "guidance": "AISOC procedure: use the stored rule and linked events to explain the detection. For repeated failures against one account, compare the account, source, destination service and event-time interval. For failures across accounts, check distinct account names and approved automation. Neither pattern reveals the attempted passwords or establishes successful access. Distinguish detection facts from a hypothesis about password guessing or spraying, and do not claim that any rule was trained as a machine-learning model."},
+        {"id": "auth-success", "title": "Checking successful access", "keywords": ["successful", "success", "succeeded", "accepted", "session", "compromise", "login"], "guidance": "AISOC procedure: distinguish LOGIN_FAILED from LOGIN_SUCCEEDED in supplied evidence. A TCP flow is not an authentication outcome. If no success event was supplied, say success cannot be confirmed from this context; do not conclude that no successful login occurred anywhere. Recommend reviewing surrounding authorized authentication records and account-owner activity. MITRE describes password guessing as repeated attempts to obtain access, which is distinct from proof that access succeeded."},
+        {"id": "auth-authorization", "title": "Authorization and account controls", "keywords": ["authorized", "owner", "lockout", "password", "account", "next", "investigate"], "guidance": "AISOC procedure: ask the account or service owner whether the observed activity was expected. Review approved automation and existing account controls before proposing changes. Password guessing can produce authentication failures and lockouts. Do not recommend generating more failed attempts or weakening SSH security to investigate an existing incident. Account changes or containment require a separate authorized human decision."}
+      ]
+    },
+    {
+      "id": "network-review", "title": "AISOC network investigation procedure", "version": "1",
+      "rules": ["tcp_port_scan_v1"],
+      "source_url": "https://attack.mitre.org/techniques/T1046/",
+      "sections": [
+        {"id": "scan-authorization", "title": "Interpreting connections across ports", "keywords": ["scan", "ports", "port", "flagged", "authorized", "scanner", "next"], "guidance": "AISOC procedure: review distinct destination ports, common source and destination, protocol and event times. Compare the pattern with an approved scanner, maintenance task or controlled lab test. Network service discovery can involve scanning for available services. A matched port-scan rule does not establish exploitation, attacker intent or a vulnerable service. A NAT source address may represent more than one originating device."},
+        {"id": "scan-service", "title": "Verifying the affected services", "keywords": ["service", "listening", "open", "connection", "tcp", "successful", "exploitation"], "guidance": "AISOC procedure: compare observed destination ports with the target's authorized service inventory. A stored flow or destination-port number alone does not prove which application was listening, that authentication succeeded or that a service was compromised. Identify missing connection outcome or application evidence and recommend collecting it through an approved investigation. Do not launch a new scan as part of an AI answer."}
+      ]
+    },
+    {
+      "id": "sensor-review", "title": "AISOC Suricata evidence procedure", "version": "1",
+      "rules": ["brute_force_v1", "password_spray_v1", "tcp_port_scan_v1", "suricata_priority_alert_v1"],
+      "source_url": "https://docs.suricata.io/en/suricata-7.0.3/output/eve/eve-json-output.html",
+      "sections": [
+        {"id": "sensor-flow", "title": "Flow and authentication boundaries", "keywords": ["flow", "network", "tcp", "related", "correlation", "successful", "session"], "guidance": "AISOC procedure: EVE contains multiple record types, including flows and alerts. Keep NETWORK_FLOW, SURICATA_ALERT and authentication outcomes separate. Related network records in AISOC are endpoint-and-time context matches, not proof of the same authenticated session. Check protocol, addresses, destination port and timestamps in original evidence before attributing activity; aliases do not remove the ambiguity introduced by NAT."},
+        {"id": "sensor-alert", "title": "Reviewing an IDS alert", "keywords": ["alert", "signature", "severity", "suricata", "ids", "priority", "trigger"], "guidance": "AISOC procedure: review the numeric signature identifier, supplied sensor severity, event type and surrounding network records. EVE alert records carry alert information alongside connection metadata. The AI context intentionally omits raw payload and sensor signature text, so identify that limitation rather than inventing signature meaning or traffic contents. An IDS match is a signal for investigation and does not by itself prove successful exploitation."}
+      ]
+    },
+    {
+      "id": "analyst-triage", "title": "AISOC analyst review procedure", "version": "1",
+      "rules": [], "source_url": null,
+      "sections": [
+        {"id": "triage-priority", "title": "Priority and disposition", "keywords": ["risk", "score", "priority", "critical", "severity", "close", "false", "positive"], "guidance": "AISOC procedure: the stored risk score is a rule-based prioritization value, not an AI confidence estimate or probability of compromise. Explain the supplied rule and evidence without inventing asset importance or business impact. Authorized lab activity may explain a detection but should be checked against the actual evidence before a human records a false-positive disposition. AI answers do not change status, ownership or access."},
+        {"id": "triage-evidence", "title": "Evidence gaps and next steps", "keywords": ["evidence", "missing", "unknown", "prove", "next", "investigate", "timeline", "time", "date"], "guidance": "AISOC procedure: separate observed events, interpretations and unanswered questions. Use event timestamps with explicit timezones; ingestion contact time and incident creation time are different facts. Cite supplied event IDs for observations and retrieved procedure IDs for proposed steps. If selected evidence is incomplete, explain what is missing and recommend a bounded manual review. Approved procedures are general guidance, never evidence that an event occurred."}
+      ]
+    }
+  ]
+}

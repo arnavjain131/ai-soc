@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from .ai_grounding import answer_schema, build_context
+from .ai_knowledge import ground_references
 from .ai_provider import AIProviderError, call_openai, PROMPT_VERSION, request_instructions
 from .memberships import lock_workspace
 from .models import Audit, Membership, now
@@ -84,7 +85,7 @@ def current_digest(row, context, model):
     question=row.details['context'].get('analyst_question')
     if question is not None:
         current['analyst_question']=question
-    return context_hash(current,model)
+    return context_hash(ground_references(current),model)
 
 
 def request_status(session, identity, incident_id, request_id, digest, context=None, model=None):
@@ -185,6 +186,7 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
         return {'enabled':settings.ai_enabled and bool(settings.openai_api_key),
                 'provider':'OpenAI','model':settings.ai_model,'has_evidence':digest is not None,
                 'quota':quota(session,identity,settings),'latest':present(latest,digest) if latest else None,
+                'knowledge':context['retrieval'] if context else None,
                 'questions':[present(row,current_digest(row,context,settings.ai_model)) for row in questions],
                 'request':request_status(session,identity,incident_id,request_id,digest,context,settings.ai_model) if request_id else None}
 

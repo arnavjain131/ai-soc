@@ -7,9 +7,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .ai_knowledge import ground_references
+
 
 CONTEXT_VERSION = '1'
-KNOWLEDGE_VERSION = '2026-11-24.1'
 RUNBOOKS = {
     'brute_force_v1': {
         'id': 'rb.password_guessing', 'title': 'Review repeated authentication failures',
@@ -90,7 +91,7 @@ def build_context(detail, question=None):
     score = detail['risk_score']
     if type(score) is not int or not 0 <= score <= 100:
         raise ValueError('Invalid stored risk score')
-    context = {'context_version':CONTEXT_VERSION,'knowledge_version':KNOWLEDGE_VERSION,
+    context = {'context_version':CONTEXT_VERSION,
         'incident_id':incident_id,'rule_keys':rules,'stored_risk_score':score,
         'linked_event_total':len(linked),'omitted_linked_events':len(linked)-len(selected),
         'related_event_total':len(related),'omitted_related_events':len(related)-len(selected_related),
@@ -115,6 +116,7 @@ def build_context(detail, question=None):
                 sorted(replacements, key=len, reverse=True)) + r')(?![\w])')
             question = pattern.sub(lambda match: replacements[match.group()], question)
         context['analyst_question'] = question
+    context = ground_references(context)
     if len(json.dumps(context).encode()) > 65536:
         raise ValueError('Incident context exceeds 64 KiB')
     return context

@@ -99,7 +99,10 @@ def test_each_detection_uses_only_its_own_citation_choices(monkeypatch,rule,even
     context=build_context(detail)
     def handler(request):
         schema=json.loads(request.content)['text']['format']['schema']
-        assert schema['$defs']['InvestigationStep']['properties']['reference_ids']['items']['enum']==[reference]
+        allowed=schema['$defs']['InvestigationStep']['properties']['reference_ids']['items']['enum']
+        assert reference in allowed
+        assert allowed==sorted(ref['id'] for ref in context['references'])
+        assert all(value==reference or value.startswith('kb.') for value in allowed)
         assert schema['$defs']['CitedObservation']['properties']['event_ids']['items']['enum']==sorted(e['id'] for e in context['evidence'])
         payload=provider_response(context)
         output=answer(context)

@@ -7,12 +7,15 @@ import httpx
 
 from .ai_grounding import AnswerValidationError, SYSTEM_INSTRUCTIONS, answer_schema, validate_answer
 
-PROMPT_VERSION='2'
+PROMPT_VERSION='3'
 REQUEST_INSTRUCTIONS=SYSTEM_INSTRUCTIONS+''' Keep the answer concise and within the output budget.
 In observations.event_ids use evidence[].id values, never account/host aliases, incident IDs, port numbers or rule keys.
 In investigation_steps.reference_ids use references[].id values. Choose only values permitted by the response schema.
 Describe the actual supplied event types: network-flow evidence is not authentication evidence.
-Keep observations to at most four concise findings and investigation steps to at most four concise steps.'''
+Keep observations to at most four concise findings and investigation steps to at most four concise steps.
+Approved procedure references are general investigation guidance, never evidence that an event occurred.
+Use retrieved guidance only when relevant to the question; cite its supplied reference ID for suggested steps.
+Do not claim that a supporting source URL was visited, that procedures were executed or that missing records were searched.'''
 
 
 class AIProviderError(Exception):

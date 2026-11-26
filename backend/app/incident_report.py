@@ -148,7 +148,7 @@ def html_report(report):
     if ai:
         answer=ai['answer'];known={e['id'] for e in report['linked_evidence']+report['related_network_context']}
         ai_body='<p><strong>Saved AI interpretation — analyst review required.</strong></p>'
-        if ai['outdated']:ai_body+='<p class="warning">Evidence or model configuration has changed since this analysis.</p>'
+        if ai['outdated']:ai_body+='<p class="warning">Evidence, knowledge or model configuration has changed since this analysis.</p>'
         ai_body+=table(['Field','Value'],[['Model',ai['model']],['Generated (UTC)',ai['generated_at']],['Saved analysis ID',ai['id']],['Knowledge version',ai['knowledge_version']],['Context fingerprint',ai['context_hash']]])
         ai_body+='<h3>Summary</h3><p>'+text(answer['summary'])+'</p><h3>Observations</h3>'
         for observation in answer['observations']:
@@ -157,6 +157,14 @@ def html_report(report):
         ai_body+='<h3>Interpretation</h3><p>'+text(answer['interpretation'])+'</p><h3>Suggested investigation</h3><ol>'
         ai_body+=''.join('<li>'+text(s['text'])+'<p class="muted">References: '+text(', '.join(s['reference_ids']))+'</p></li>' for s in answer['investigation_steps'])+'</ol>'
         ai_body+=table(['Reference ID','Title','URL'],[[r['id'],r['title'],r.get('url')] for r in ai['references']])
+        retrieved=[r for r in ai['references'] if r.get('document_id')]
+        if retrieved:
+            ai_body+='<h3>Retrieved investigation guidance</h3>'
+            for reference in retrieved:
+                ai_body+='<article><h4>'+text(reference['title'])+'</h4><p>'+text(reference.get('guidance'))+'</p>'
+                ai_body+=table(['Reference','Document','Version','Section','Content fingerprint'],[[
+                    reference['id'],reference.get('document_id'),reference.get('version'),
+                    reference.get('section'),reference.get('content_hash')]])+'</article>'
         ai_body+='<h3>Limitations</h3><ul>'+''.join('<li>'+text(s)+'</li>' for s in answer['limitations']+ai['context_limitations'])+'</ul>'
         ai_body+='<p>AI input omitted '+str(ai['omitted_linked_events'])+' linked and '+str(ai['omitted_related_events'])+' related records to meet input bounds. The current report evidence is independent of these model input limits.</p>'
     else:ai_body='<p>'+('No saved AI analysis is available. No new analysis was generated.' if report['ai_included'] else 'Saved AI analysis was excluded by the exporter.')+'</p>'

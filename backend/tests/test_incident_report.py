@@ -110,7 +110,7 @@ def test_saved_ai_can_be_included_or_excluded_without_new_generation(environment
     stale=c.get(report_path,params={'format':'json'}).json()
     assert stale['saved_ai_analysis']['outdated'] is True
     html=c.get(report_path).text
-    assert 'Evidence or model configuration has changed' in html
+    assert 'Evidence, knowledge or model configuration has changed' in html
     assert '#event-' in html and len(calls)==1
 
 
@@ -122,6 +122,26 @@ def test_follow_up_answer_does_not_replace_report_summary(environment,monkeypatc
     result=c.get(report_path,params={'format':'json'}).json()['saved_ai_analysis']
     assert result['id']==summary['id'] and result['question'] is None
     assert result['outdated'] is False and len(calls)==2
+
+
+def test_report_keeps_retrieved_guidance_and_provenance_with_safe_html(environment,monkeypatch):
+    from app.ai_analysis import COMPLETED
+    app,c,_,_,_,path,calls=ai_setup(environment,monkeypatch)
+    assert c.post(path,json={'request_id':str(uuid4())}).status_code==200
+    with app.state.sessions.begin() as db:
+        row=db.scalar(select(Audit).where(Audit.action==COMPLETED))
+        details=dict(row.details);context=dict(details['context'])
+        refs=[dict(item) for item in context['references']]
+        section=next(item for item in refs if item.get('document_id'))
+        section['guidance']='<script>untrusted archived text</script>'
+        context['references']=refs;details['context']=context;row.details=details
+    report_path=path.removesuffix('/ai-analysis')+'/report'
+    html=c.get(report_path).text
+    assert 'Retrieved investigation guidance' in html and section['content_hash'] in html
+    assert '&lt;script&gt;untrusted archived text&lt;/script&gt;' in html and '<script>' not in html
+    data=c.get(report_path,params={'format':'json'}).json()['saved_ai_analysis']['references']
+    assert next(item for item in data if item['id']==section['id'])==section
+    assert len(calls)==1
 
 
 def test_access_is_rechecked_before_export_delivery(report,monkeypatch):
