@@ -12,7 +12,7 @@ export function mergeAIResult<A extends {id:string;question?:string|null}, S ext
 
 export function aiFailureMessage(code?: string): string {
   const validation = ['invalid_provider_output', 'invalid_provider_json', 'invalid_answer_json',
-    'invalid_answer_schema', 'invalid_evidence_citation', 'invalid_reference_citation',
+    'invalid_answer_schema', 'invalid_evidence_citation', 'invalid_reference_citation', 'invalid_case_citation',
     'oversized_answer', 'unexpected_provider_output']
   const reason = validation.includes(code || '')
     ? 'The model response failed format or evidence validation and was rejected.'

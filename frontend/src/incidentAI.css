@@ -16,3 +16,7 @@
 .ai-content .ai-answer-title { font-size: 18px; color: var(--mint, #a5e8d2); margin-top: 8px; }
 .ai-guidance { margin: .6rem 0 1rem; padding: .75rem; border: 1px solid #35475d; border-radius: .5rem; }
 .ai-guidance summary { cursor: pointer; color: var(--mint, #a5e8d2); }
+.ai-history-cases { padding-top: .5rem; margin-top: 1rem; border-top: 1px solid #35475d; }
+.ai-history-cases ul { list-style: none; padding: 0; }
+.ai-history-cases li { padding: 1rem; margin: .75rem 0; border: 1px solid #35475d; border-radius: .5rem; }
+.ai-history-cases button,.ai-citations button { font: inherit; color: var(--mint, #a5e8d2); background: #14222f; border: 1px solid #35475d; border-radius: .5rem; padding: .6rem .8rem; cursor: pointer; }

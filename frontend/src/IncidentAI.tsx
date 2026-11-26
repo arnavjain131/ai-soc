@@ -3,11 +3,14 @@ import { api, ApiError } from './api'
 import { aiFailureMessage, mergeAIResult, recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
 import './incidentAI.css'
 
+type HistoricalCase={id:string;title?:string;created_at:string;status:string;severity:string;risk_score:number|null;shared_rules:string[]}
 type Analysis = {
   id:string; generated_at:string; model:string; outdated:boolean; knowledge_version:string
   question?:string|null
   answer:{ summary:string; observations:{text:string;event_ids:string[]}[]; interpretation:string;
-    investigation_steps:{text:string;reference_ids:string[]}[]; limitations:string[] }
+    investigation_steps:{text:string;reference_ids:string[]}[]; limitations:string[];
+    historical_observations?:{text:string;case_ids:string[]}[] }
+  historical_cases?:HistoricalCase[]
   references:{id:string;title:string;url:string|null;guidance?:string;document_id?:string;section?:string;version?:string;content_hash?:string}[]; context_limitations:string[]
   omitted_linked_events:number; omitted_related_events:number
 }
@@ -15,9 +18,11 @@ type State = {enabled:boolean;has_evidence:boolean;provider:string;model:string;
   quota:{daily_used:number;daily_limit:number;monthly_used:number;monthly_limit:number};latest:Analysis|null;
   questions?:Analysis[];
   knowledge?:{version:string;method:string;document_count:number;section_count:number};
+  similar_incidents?:HistoricalCase[];
+  history_retrieval?:{method:string;lookback_days:number;display_limit:number;ai_limit:number};
   request?:AIRequestReceipt<Analysis>|null}
 
-export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventIds:string[] }) {
+export function IncidentAI({ incidentId, eventIds, onOpenIncident, navigationBusy=false }: { incidentId:string; eventIds:string[];onOpenIncident?:(id:string)=>void;navigationBusy?:boolean }) {
   const [state,setState]=useState<State|null>(null), [loading,setLoading]=useState(true), [busy,setBusy]=useState(false)
   const [error,setError]=useState(''), [notice,setNotice]=useState(''), [knownFailure,setKnownFailure]=useState(false)
   const [revision,setRevision]=useState(0)
@@ -128,6 +133,9 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <p className="muted">Generating sends selected timestamps, event IDs/types, ports, protocol, stored priority and approved investigation references to OpenAI. Account names and IPs use aliases; raw logs, note text and sensor signature text are excluded. This does not make the context anonymous.</p>
         <p className="small muted">Generation attempts: {state.quota.daily_used}/{state.quota.daily_limit} today · {state.quota.monthly_used}/{state.quota.monthly_limit} this UTC month. Failed attempts count. Unchanged saved analyses are reused.</p>
         {state.knowledge && <p className="small muted">Approved knowledge: {state.knowledge.document_count} procedures · {state.knowledge.section_count} sections. Relevant guidance is selected locally using keywords and the incident detection type. No live web search.</p>}
+        {state.history_retrieval && <div className="ai-history-cases"><h3>Earlier incidents with matching detections</h3><p className="small muted">Up to {state.history_retrieval.display_limit} earlier-created incidents in this workspace, within {state.history_retrieval.lookback_days} days before this incident was created. Ranked by shared detection rules, then creation time. A match does not establish a shared attacker, host or cause. Opening a case uses no AI credit.</p>
+          {!state.similar_incidents?.length ? <p>No earlier incidents matched these detection rules within this window.</p> : <ul>{state.similar_incidents.map(item=><li key={item.id}><strong>{item.title}</strong><p className="small muted">Created {new Date(item.created_at).toLocaleString()} · {item.status.replaceAll('_',' ')} · {item.severity} · risk {item.risk_score}/100</p><p className="small muted">Shared rules: {item.shared_rules.join(', ')}</p><p className="small muted">Incident {item.id}</p>{onOpenIncident && <button type="button" disabled={navigationBusy} onClick={()=>onOpenIncident(item.id)}>Open earlier incident {item.id.slice(0,8)}</button>}</li>)}</ul>}
+          <p className="small muted">New AI requests include at most {state.history_retrieval.ai_limit} matched case summaries: incident IDs, creation times, status, priority and shared rules. Historical titles, account names, addresses, notes and logs are excluded. Saved answers keep the metadata used when generated.</p></div>}
         {!state.has_evidence && <p>No linked evidence is available for model interpretation.</p>}
         <div className="ai-actions"><button className="primary" disabled={busy || loading || (!knownFailure && (!state.enabled || !state.has_evidence))} onClick={()=>knownFailure ? setRevision(value=>value+1) : void analyze()}>{busy ? 'Analyzing evidence…' : knownFailure ? 'Check request status' : pending.current ? 'Check / retry same request' : 'Analyze incident'}</button>
           {knownFailure && <button disabled={busy || loading || !state.enabled} onClick={()=>void analyze(true,pendingQuestion.current)}>Start a new attempt (uses quota)</button>}
@@ -135,7 +143,7 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <form className="ai-question-form" onSubmit={event=>{event.preventDefault();void analyze(false,question.trim())}}>
           <h3>Ask about this incident</h3>
           <p className="small muted">Each question uses the same workspace AI quota. Answers use current incident evidence and approved references. Previous answers are not sent as conversation context.</p>
-          <div className="ai-actions">{['Why was this incident flagged?', 'Does the evidence show a successful login?', 'What should I investigate next?'].map(text=><button type="button" key={text} disabled={busy || !!pending.current} onClick={()=>setQuestion(text)}>{text}</button>)}</div>
+          <div className="ai-actions">{['Why was this incident flagged?', 'Does the evidence show a successful login?', 'What should I investigate next?', 'Are there similar earlier incidents?'].map(text=><button type="button" key={text} disabled={busy || !!pending.current} onClick={()=>setQuestion(text)}>{text}</button>)}</div>
           <label htmlFor={`ai-question-${incidentId}`}>Investigation question</label>
           <textarea id={`ai-question-${incidentId}`} value={question} minLength={3} maxLength={500} rows={3} required disabled={busy || !!pending.current} onChange={event=>setQuestion(event.target.value)} aria-describedby={`ai-question-privacy-${incidentId}`} />
           <p className="small muted" id={`ai-question-privacy-${incidentId}`}>Your question is sent to OpenAI and saved for workspace members. Known account names and IPs from selected evidence are replaced with aliases; other text may remain identifiable. Use host/account aliases and never include passwords, tokens or other secrets.</p>
@@ -152,6 +160,10 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <h3>AI observations</h3>{analysis.answer.observations.map((observation,index)=><article key={index}><p>{observation.text}</p><div className="ai-citations">{observation.event_ids.map(id=>ids.has(id)
           ? <a key={id} href={`#evidence-${id}`} title={id}>Evidence {id.slice(0,8)}</a> : <span key={id} title={id}>Evidence {id.slice(0,8)} (outside current timeline view)</span>)}</div></article>)}
         <h3>Interpretation</h3><p>{analysis.answer.interpretation}</p>
+        {!!analysis.answer.historical_observations?.length && <><h3>Earlier case comparison</h3><p className="small muted">Based on saved case metadata, not earlier case logs or confirmed investigation outcomes.</p>{analysis.answer.historical_observations.map((item,index)=><article key={index}><p>{item.text}</p><div className="ai-citations">{item.case_ids.map(id=>{
+          const historical=analysis.historical_cases?.find(candidate=>candidate.id===id)
+          return historical ? <span key={id}>{onOpenIncident ? <button type="button" disabled={navigationBusy} onClick={()=>onOpenIncident(id)}>Open cited case {id.slice(0,8)}</button> : `Case ${id}`}<span className="small muted"> · saved status {historical.status.replaceAll('_',' ')} · created {new Date(historical.created_at).toLocaleString()}</span></span> : <span key={id}>Case {id.slice(0,8)} (not in saved context)</span>
+        })}</div></article>)}</>}
         <h3>Suggested investigation</h3><ol>{analysis.answer.investigation_steps.map((step,index)=><li key={index}><p>{step.text}</p><span className="small muted">References: {step.reference_ids.join(', ')}</span></li>)}</ol>
         <h3>References</h3><ul>{analysis.references.map(reference=><li key={reference.id}>{reference.document_id ? <>{reference.title}{reference.url && <> · <a href={reference.url} target="_blank" rel="noopener noreferrer">Supporting source</a></>}</> : reference.url
           ? <a href={reference.url} target="_blank" rel="noopener noreferrer">{reference.title}</a> : reference.title}<span className="small muted"> · {reference.id}</span>{reference.document_id && <details className="ai-guidance"><summary>Read retrieved guidance</summary><p>{reference.guidance}</p><p className="small muted">Document {reference.document_id} · version {reference.version} · section {reference.section}</p><p className="small muted">Content fingerprint: {reference.content_hash}</p></details>}</li>)}</ul>

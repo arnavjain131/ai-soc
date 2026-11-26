@@ -65,7 +65,7 @@ test('cache-hit receipt recovers even if its saved analysis predates this reques
 })
 
 test('rejected model answers are distinguished from connectivity and refresh does not promise repair',()=>{
-  for(const code of ['invalid_provider_output','invalid_evidence_citation','invalid_reference_citation','invalid_answer_schema']) {
+  for(const code of ['invalid_provider_output','invalid_evidence_citation','invalid_reference_citation','invalid_case_citation','invalid_answer_schema']) {
     assert.match(aiFailureMessage(code),/format or evidence validation/)
     assert.match(aiFailureMessage(code),/cannot repair a failed generation/)
   }

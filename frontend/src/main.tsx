@@ -63,6 +63,7 @@ function App() {
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false)
   const [stats, setStats] = useState<Stats>(demoStats), [sources, setSources] = useState<Source[]>(demoSources)
   const [detail, setDetail] = useState<Detail | null>(null)
+  const incidentHeading=useRef<HTMLHeadingElement|null>(null)
   const [journalRefresh, setJournalRefresh] = useState(0)
   const [queueSaved,setQueueSaved]=useState<{boundary:string;view:QueueView}|null>(null)
   const [tab, setTab] = useState<'overview' | 'incidents' | 'sources' | 'network' | 'events' | 'members'>('overview')
@@ -75,6 +76,12 @@ function App() {
   const boundary = `${mode}:${session?.access_token || ''}`
   const boundaryRef = useRef(boundary)
   boundaryRef.current = boundary
+
+  useEffect(()=>{
+    if(!detail)return
+    incidentHeading.current?.focus({preventScroll:true})
+    incidentHeading.current?.scrollIntoView({block:'start',behavior:'instant'})
+  },[detail?.id])
 
   useEffect(() => {
     if (mode !== 'private' || !session) return
@@ -129,7 +136,7 @@ function App() {
     if (mode === 'demo' || session) void refresh()
   }, [mode, session?.access_token])
 
-  async function openIncident(item: Incident) {
+  async function openIncident(item: Pick<Incident,'id'>) {
     const requestedBoundary = boundary
     setError(''); setBusy(true)
     try {
@@ -211,7 +218,7 @@ function App() {
           </section> : <>
           {detail ? <>
             <button className="back" onClick={() => setDetail(null)}>← Back to incident queue</button>
-            <section className="panel incident-header"><div><div className="eyebrow">{detail.id.startsWith('demo') ? 'DEMONSTRATION INCIDENT' : 'INCIDENT'}</div><h2>{detail.title}</h2><span className="mono muted">{detail.id}</span></div><span className="severity">{detail.severity.toUpperCase()}</span></section>
+            <section className="panel incident-header"><div><div className="eyebrow">{detail.id.startsWith('demo') ? 'DEMONSTRATION INCIDENT' : 'INCIDENT'}</div><h2 ref={incidentHeading} tabIndex={-1}>{detail.title}</h2><span className="mono muted">{detail.id}</span></div><span className="severity">{detail.severity.toUpperCase()}</span></section>
             <div className="detail-grid"><EvidenceTimeline detail={detail}/>
               <div className="stack"><section className="panel risk"><div className="panel-heading"><h2>Risk breakdown</h2><ShieldAlert size={17}/></div><div className="risk-number">{detail.risk_score}<span>/100</span></div><p className="muted small">Prioritization score · not a probability</p>{Object.entries(detail.score_components).map(([key, value]) => <div className="score-line" key={key}><span>{statusLabel(key)}</span><strong>+{value}</strong></div>)}</section>
               <section className="panel"><div className="panel-heading"><h2>Detection rationale</h2></div>{detail.alerts.map(alert => <div className="rationale" key={alert.id}><code>{alert.rule_key}</code><p>{alert.explanation}</p></div>)}</section>
@@ -220,7 +227,7 @@ function App() {
             {mode === 'private' && <IncidentReport key={`report:${boundary}:${detail.id}`} incidentId={detail.id}/>}
             {mode === 'private' && <IncidentAssignment key={`assignment:${boundary}:${detail.id}`} incidentId={detail.id} viewerId={session?.user.id} refreshKey={detail.updated_at} onChanged={()=>setJournalRefresh(value=>value+1)}/>}
             {mode === 'private' && <IncidentJournal key={`${boundary}:${detail.id}`} incidentId={detail.id} viewerId={session?.user.id} refreshKey={`${detail.updated_at}:${detail.status}:${journalRefresh}`}/>}
-            {mode === 'private' && <React.Suspense fallback={<p role="status">Loading AI panel…</p>}><IncidentAI key={`${boundary}:${detail.id}`} incidentId={detail.id} eventIds={[...detail.events,...(detail.related_network_events ?? [])].map(event=>event.id)}/></React.Suspense>}
+            {mode === 'private' && <React.Suspense fallback={<p role="status">Loading AI panel…</p>}><IncidentAI key={`${boundary}:${detail.id}`} incidentId={detail.id} eventIds={[...detail.events,...(detail.related_network_events ?? [])].map(event=>event.id)} onOpenIncident={id=>void openIncident({id})} navigationBusy={busy}/></React.Suspense>}
           </> : tab === 'members' && mode === 'private' && role === 'admin' ? <WorkspaceAccess key={boundary} refreshKey={membersRefresh}/> : tab === 'events' && mode === 'private' ? <SecurityEvents key={boundary} sessionKey={boundary} refreshKey={eventsRefresh} sources={sources}/> : tab === 'network' && mode === 'private' ? <NetworkEvents key={boundary} sessionKey={boundary} refreshKey={networkRefresh}/> : tab === 'sources' ? <section className="panel"><div className="panel-heading"><h2>Registered sources</h2><span className="muted small">{sources.length} sources</span></div>{mode === 'private' && role === 'admin' && <div className="source-create"><form onSubmit={createSource}><label htmlFor="source-name">Add a telemetry source</label><div><input id="source-name" placeholder="e.g. Authentication lab" required maxLength={100} value={sourceName} onChange={e => setSourceName(e.target.value)}/><button className="primary" disabled={busy || !sourceName.trim()}>Create source</button></div></form>{sourceToken && <div className="source-secret"><strong>Save this source token now</strong><p>It is displayed once. Keep it private and use it only in your collector or local smoke test.</p><textarea aria-label="New source token" readOnly value={sourceToken}/><button className="secondary" onClick={() => setSourceToken('')}>Hide token</button></div>}</div>}{sources.length ? sources.map(source => <div className="source-row" key={source.id}><span className="source-icon"><Terminal size={20}/></span><div className="source-identity"><strong>{source.name}</strong></div><SourceStatus source={source} now={sourceNow} demo={mode === 'demo'}/></div>) : <div className="empty"><Radio/><p>No sources yet. An administrator can create one in this view.</p></div>}</section> : <>
             <div className="metrics">{[
               { label: 'Open incidents', value: stats.open_incidents, icon: ShieldAlert, note: 'Awaiting analyst review', accent: 'orange' },
