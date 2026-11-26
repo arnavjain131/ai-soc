@@ -2,11 +2,13 @@
 
 Updated 26 November 2026. Keep credentials in ignored local configuration.
 
-## Current: similar earlier incidents (release preparation)
+## Current: similar earlier incidents (deployed)
 
 API 0.13.0 adds workspace-scoped earlier-case matching by shared detection rules, limited to three results within the 180 days before the current incident's creation time. New AI requests receive at most two metadata-only cases; historical observations have separately validated case-ID citations. Historical titles, notes, identities and logs are excluded from provider context. Current-event and procedure citation namespaces remain separate. Saved metadata and comparisons are preserved in HTML/JSON reports. Read-only case navigation opens and focuses the selected incident. See `docs/AI_HISTORY.md`.
 
-Validation: 198 backend tests passed / nine optional PostgreSQL tests skipped in the default run. The new real PostgreSQL history query test passed separately; both report snapshot/pool tests also passed on newly created disposable local databases, which were removed, and the local lab was stopped afterward. Frontend 35 tests and production build passed (existing bundle-size warning). Backend-first deployment is in progress. No paid model call, hosted record mutation, migration, threshold or collector change was made.
+Validation: 198 backend tests passed / nine optional PostgreSQL tests skipped in the default run. The new real PostgreSQL history query test passed separately; both report snapshot/pool tests also passed on newly created disposable local databases, which were removed, and the local lab was stopped afterward. Frontend 35 tests and production build passed (existing bundle-size warning). No paid model call, hosted record mutation, migration, threshold or collector change was made.
+
+Deployment verified: backend `23befd0` is live on Render, API 0.13.0 / readiness 200; anonymous AI status remains 401. Frontend `0dee18d` is published on Vercel, entry `index-DuMFjH4a.js` / component `IncidentAI--K020fgN.js`. Authenticated browser check on the newest real SSH incident displayed three earlier brute-force matches (the November 16 demo replay, November 15 Ubuntu case and November 12 demo replay). The unrelated port-scan incident was excluded. Opened the November 15 Ubuntu incident and confirmed the correct incident ID and heading focus, then returned to the newest incident. Usage remained 2/3 daily and 5/30 monthly. No hosted AI generation using the new historical answer schema has been submitted by the agent; provider/citation behavior was validated with mocks. Structural matching does not establish common actors or confirm lab/real provenance.
 
 ## Current: approved investigation knowledge (deployed)
 
