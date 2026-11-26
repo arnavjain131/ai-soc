@@ -14,3 +14,5 @@
 .ai-result { scroll-margin-top: 24px; }
 .ai-result:focus { outline: 2px solid var(--mint, #a5e8d2); outline-offset: 8px; border-radius: .25rem; }
 .ai-content .ai-answer-title { font-size: 18px; color: var(--mint, #a5e8d2); margin-top: 8px; }
+.ai-guidance { margin: .6rem 0 1rem; padding: .75rem; border: 1px solid #35475d; border-radius: .5rem; }
+.ai-guidance summary { cursor: pointer; color: var(--mint, #a5e8d2); }

@@ -8,12 +8,13 @@ type Analysis = {
   question?:string|null
   answer:{ summary:string; observations:{text:string;event_ids:string[]}[]; interpretation:string;
     investigation_steps:{text:string;reference_ids:string[]}[]; limitations:string[] }
-  references:{id:string;title:string;url:string|null}[]; context_limitations:string[]
+  references:{id:string;title:string;url:string|null;guidance?:string;document_id?:string;section?:string;version?:string;content_hash?:string}[]; context_limitations:string[]
   omitted_linked_events:number; omitted_related_events:number
 }
 type State = {enabled:boolean;has_evidence:boolean;provider:string;model:string;
   quota:{daily_used:number;daily_limit:number;monthly_used:number;monthly_limit:number};latest:Analysis|null;
   questions?:Analysis[];
+  knowledge?:{version:string;method:string;document_count:number;section_count:number};
   request?:AIRequestReceipt<Analysis>|null}
 
 export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventIds:string[] }) {
@@ -126,6 +127,7 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <p>{state.enabled ? `Provider: ${state.provider} · ${state.model}` : 'AI is not enabled. The project owner must finish provider setup. Existing detections and evidence remain available.'}</p>
         <p className="muted">Generating sends selected timestamps, event IDs/types, ports, protocol, stored priority and approved investigation references to OpenAI. Account names and IPs use aliases; raw logs, note text and sensor signature text are excluded. This does not make the context anonymous.</p>
         <p className="small muted">Generation attempts: {state.quota.daily_used}/{state.quota.daily_limit} today · {state.quota.monthly_used}/{state.quota.monthly_limit} this UTC month. Failed attempts count. Unchanged saved analyses are reused.</p>
+        {state.knowledge && <p className="small muted">Approved knowledge: {state.knowledge.document_count} procedures · {state.knowledge.section_count} sections. Relevant guidance is selected locally using keywords and the incident detection type. No live web search.</p>}
         {!state.has_evidence && <p>No linked evidence is available for model interpretation.</p>}
         <div className="ai-actions"><button className="primary" disabled={busy || loading || (!knownFailure && (!state.enabled || !state.has_evidence))} onClick={()=>knownFailure ? setRevision(value=>value+1) : void analyze()}>{busy ? 'Analyzing evidence…' : knownFailure ? 'Check request status' : pending.current ? 'Check / retry same request' : 'Analyze incident'}</button>
           {knownFailure && <button disabled={busy || loading || !state.enabled} onClick={()=>void analyze(true,pendingQuestion.current)}>Start a new attempt (uses quota)</button>}
@@ -145,14 +147,14 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       {analysis && <div ref={resultPanel} id={`ai-answer-${incidentId}`} className="ai-result" role="region" aria-labelledby={`ai-answer-title-${incidentId}`} tabIndex={-1}>
         <h3 id={`ai-answer-title-${incidentId}`} className="ai-answer-title">{analysis.question ? `Answer: ${analysis.question}` : 'Incident summary'}</h3>
         <p className="small muted">AI generated · {analysis.model} · <time dateTime={analysis.generated_at} title={analysis.generated_at}>{new Date(analysis.generated_at).toLocaleString()}</time> · Knowledge {analysis.knowledge_version}</p>
-        {analysis.outdated && <p role="status">Evidence or model configuration has changed since this analysis. Review the current timeline before requesting a fresh analysis.</p>}
+        {analysis.outdated && <p role="status">Evidence, knowledge or model configuration has changed since this analysis. The saved answer remains available; review current evidence before explicitly requesting a fresh analysis.</p>}
         <h3>{analysis.question ? 'Answer' : 'Summary'}</h3><p>{analysis.answer.summary}</p>
         <h3>AI observations</h3>{analysis.answer.observations.map((observation,index)=><article key={index}><p>{observation.text}</p><div className="ai-citations">{observation.event_ids.map(id=>ids.has(id)
           ? <a key={id} href={`#evidence-${id}`} title={id}>Evidence {id.slice(0,8)}</a> : <span key={id} title={id}>Evidence {id.slice(0,8)} (outside current timeline view)</span>)}</div></article>)}
         <h3>Interpretation</h3><p>{analysis.answer.interpretation}</p>
         <h3>Suggested investigation</h3><ol>{analysis.answer.investigation_steps.map((step,index)=><li key={index}><p>{step.text}</p><span className="small muted">References: {step.reference_ids.join(', ')}</span></li>)}</ol>
-        <h3>References</h3><ul>{analysis.references.map(reference=><li key={reference.id}>{reference.url
-          ? <a href={reference.url} target="_blank" rel="noopener noreferrer">{reference.title}</a> : reference.title}<span className="small muted"> · {reference.id}</span></li>)}</ul>
+        <h3>References</h3><ul>{analysis.references.map(reference=><li key={reference.id}>{reference.document_id ? <>{reference.title}{reference.url && <> · <a href={reference.url} target="_blank" rel="noopener noreferrer">Supporting source</a></>}</> : reference.url
+          ? <a href={reference.url} target="_blank" rel="noopener noreferrer">{reference.title}</a> : reference.title}<span className="small muted"> · {reference.id}</span>{reference.document_id && <details className="ai-guidance"><summary>Read retrieved guidance</summary><p>{reference.guidance}</p><p className="small muted">Document {reference.document_id} · version {reference.version} · section {reference.section}</p><p className="small muted">Content fingerprint: {reference.content_hash}</p></details>}</li>)}</ul>
         <h3>Limitations</h3><ul>{[...analysis.answer.limitations,...analysis.context_limitations].map((limit,index)=><li key={index}>{limit}</li>)}</ul>
         {(analysis.omitted_linked_events>0 || analysis.omitted_related_events>0) && <p>Context excluded {analysis.omitted_linked_events} linked and {analysis.omitted_related_events} related event(s) to stay within limits.</p>}
         <p className="small muted">No containment, account changes or disposition changes were performed. AI interpretation does not establish compromise.</p>
