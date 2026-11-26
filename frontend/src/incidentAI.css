@@ -4,3 +4,13 @@
 .ai-question-form textarea { display: block; width: 100%; box-sizing: border-box; padding: .8rem; font: inherit; color: inherit; background: #0c1420; border: 1px solid #35475d; border-radius: .5rem; resize: vertical; }
 .ai-question-history li { margin-bottom: .75rem; }
 .ai-question-history button { text-align: left; overflow-wrap: anywhere; }
+.ai-question-history ul { list-style: none; padding-left: 0; }
+.ai-question-history li { padding: .4rem 0; }
+.ai-question-history button,.ai-question-form .ai-actions button,.ai-summary-button { font: inherit; color: var(--mint, #a5e8d2); background: #14222f; border: 1px solid #35475d; border-radius: .5rem; padding: .75rem 1rem; cursor: pointer; }
+.ai-question-history button { display: flex; flex-direction: column; gap: .4rem; width: 100%; margin-bottom: .4rem; }
+.ai-question-history button[aria-pressed="true"] { border-color: var(--mint, #a5e8d2); background: #19332f; }
+.ai-question-history button:hover,.ai-summary-button:hover { border-color: var(--mint, #a5e8d2); }
+.ai-question-history button:focus-visible,.ai-question-form button:focus-visible,.ai-summary-button:focus-visible { outline: 2px solid var(--mint, #a5e8d2); outline-offset: 3px; }
+.ai-result { scroll-margin-top: 24px; }
+.ai-result:focus { outline: 2px solid var(--mint, #a5e8d2); outline-offset: 8px; border-radius: .25rem; }
+.ai-content .ai-answer-title { font-size: 18px; color: var(--mint, #a5e8d2); margin-top: 8px; }

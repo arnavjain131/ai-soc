@@ -21,17 +21,28 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
   const [error,setError]=useState(''), [notice,setNotice]=useState(''), [knownFailure,setKnownFailure]=useState(false)
   const [revision,setRevision]=useState(0)
   const [question,setQuestion]=useState(''), [selectedQuestion,setSelectedQuestion]=useState<Analysis|null>(null)
+  const [revealRequest,setRevealRequest]=useState(0)
+  const resultPanel=useRef<HTMLDivElement|null>(null)
   const pendingQuestion=useRef<string|null>(null)
   const pending=useRef<string|null>(null), submitting=useRef(false), current=useRef(0)
   const path=`/api/incidents/${incidentId}/ai-analysis`
+  function openAnalysis(answer:Analysis|null) {
+    setSelectedQuestion(answer)
+    setRevealRequest(value=>value+1)
+  }
+  useEffect(()=>{
+    if(!revealRequest)return
+    resultPanel.current?.focus({preventScroll:true})
+    resultPanel.current?.scrollIntoView({block:'start',behavior:'instant'})
+  },[revealRequest])
   function acceptSnapshot(result:State) {
     if(pending.current && result.request?.state==='completed' && result.request.analysis) {
       pending.current=null
       setError('');setKnownFailure(false)
       setNotice('Saved AI analysis recovered automatically. No additional model call was made.')
       if(result.request.analysis.question) {
-        setSelectedQuestion(result.request.analysis)
-      } else setSelectedQuestion(null)
+        openAnalysis(result.request.analysis)
+      } else openAnalysis(null)
       setState(mergeAIResult(result,result.request.analysis))
     } else {
       setState(result)
@@ -72,8 +83,7 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       },65000)
       if(current.current!==request)return
       pending.current=null
-      if(result.analysis.question)setSelectedQuestion(result.analysis)
-      else setSelectedQuestion(null)
+      openAnalysis(result.analysis.question ? result.analysis : null)
       setState(previous => previous ? mergeAIResult(previous,result.analysis):previous)
       setNotice(result.cached ? 'Saved analysis reused. No new model call was made.' : 'AI analysis saved. Review its evidence and limitations before acting.')
       setRevision(value=>value+1)
@@ -129,12 +139,12 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
           <p className="small muted" id={`ai-question-privacy-${incidentId}`}>Your question is sent to OpenAI and saved for workspace members. Known account names and IPs from selected evidence are replaced with aliases; other text may remain identifiable. Use host/account aliases and never include passwords, tokens or other secrets.</p>
           <button className="primary" type="submit" disabled={busy || loading || !!pending.current || !state.enabled || !state.has_evidence || question.trim().length<3}>Ask question (uses quota)</button>
         </form>
-        {!!state.questions?.length && <div className="ai-question-history"><h3>Saved questions</h3><p className="small muted">Most recent 20 saved answers. Opening an answer makes no model call.</p><ul>{state.questions.map(item=><li key={item.id}><button type="button" onClick={()=>setSelectedQuestion(item)}>{item.question}</button> <time className="small muted" dateTime={item.generated_at}>{new Date(item.generated_at).toLocaleString()}</time></li>)}</ul></div>}
-        {selectedQuestion && <button type="button" onClick={()=>setSelectedQuestion(null)}>Show incident summary</button>}
+        {!!state.questions?.length && <div className="ai-question-history"><h3>Saved questions</h3><p className="small muted">Select a question to view its saved answer below. No model call is made.</p><ul>{state.questions.map(item=><li key={item.id}><button type="button" aria-pressed={selectedQuestion?.id===item.id} aria-controls={`ai-answer-${incidentId}`} onClick={()=>openAnalysis(item)}><span>{item.question}</span><span className="small">{selectedQuestion?.id===item.id ? 'Viewing answer' : 'Open saved answer →'}</span></button> <time className="small muted" dateTime={item.generated_at}>{new Date(item.generated_at).toLocaleString()}</time></li>)}</ul></div>}
+        {selectedQuestion && <button className="ai-summary-button" type="button" onClick={()=>openAnalysis(null)}>Show incident summary</button>}
       </>}
-      {analysis && <div className="ai-result" aria-live="polite">
+      {analysis && <div ref={resultPanel} id={`ai-answer-${incidentId}`} className="ai-result" role="region" aria-labelledby={`ai-answer-title-${incidentId}`} tabIndex={-1}>
+        <h3 id={`ai-answer-title-${incidentId}`} className="ai-answer-title">{analysis.question ? `Answer: ${analysis.question}` : 'Incident summary'}</h3>
         <p className="small muted">AI generated · {analysis.model} · <time dateTime={analysis.generated_at} title={analysis.generated_at}>{new Date(analysis.generated_at).toLocaleString()}</time> · Knowledge {analysis.knowledge_version}</p>
-        {analysis.question && <><h3>Question</h3><p>{analysis.question}</p></>}
         {analysis.outdated && <p role="status">Evidence or model configuration has changed since this analysis. Review the current timeline before requesting a fresh analysis.</p>}
         <h3>{analysis.question ? 'Answer' : 'Summary'}</h3><p>{analysis.answer.summary}</p>
         <h3>AI observations</h3>{analysis.answer.observations.map((observation,index)=><article key={index}><p>{observation.text}</p><div className="ai-citations">{observation.event_ids.map(id=>ids.has(id)
