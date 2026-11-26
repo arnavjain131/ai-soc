@@ -114,6 +114,16 @@ def test_saved_ai_can_be_included_or_excluded_without_new_generation(environment
     assert '#event-' in html and len(calls)==1
 
 
+def test_follow_up_answer_does_not_replace_report_summary(environment,monkeypatch):
+    _,c,_,_,_,path,calls=ai_setup(environment,monkeypatch)
+    summary=c.post(path,json={'request_id':str(uuid4())}).json()['analysis']
+    assert c.post(path,json={'request_id':str(uuid4()),'question':'Did a login succeed?'}).status_code==200
+    report_path=path.removesuffix('/ai-analysis')+'/report'
+    result=c.get(report_path,params={'format':'json'}).json()['saved_ai_analysis']
+    assert result['id']==summary['id'] and result['question'] is None
+    assert result['outdated'] is False and len(calls)==2
+
+
 def test_access_is_rechecked_before_export_delivery(report,monkeypatch):
     app,c,owner,_,_,path=report
     original=incident_report.html_report

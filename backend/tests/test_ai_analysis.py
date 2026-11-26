@@ -186,3 +186,65 @@ def test_failed_status_returns_only_allowlisted_safe_diagnostics(environment,mon
     response=client.get(path,params={'request_id':request_id})
     assert response.json()['request']=={'state':'failed','error_code':'provider_unavailable'}
     assert 'private-raw-error' not in response.text
+
+
+def test_questions_have_distinct_cache_history_and_exact_request_recovery(environment,monkeypatch):
+    app,client,_,_,_,path,calls=setup(environment,monkeypatch)
+    summary=client.post(path,json={'request_id':str(uuid4())}).json()['analysis']
+    request_id=str(uuid4())
+    question='Does this show a successful login?'
+    first=client.post(path,json={'request_id':request_id,'question':question})
+    assert first.status_code==200 and first.json()['cached'] is False
+    result=first.json()['analysis']
+    assert result['question']==question and result['outdated'] is False
+    assert calls[-1]['analyst_question']==question
+    assert client.post(path,json={'request_id':request_id,'question':question}).json()['cached'] is True
+    assert client.post(path,json={'request_id':str(uuid4()),'question':question}).json()['cached'] is True
+    assert client.post(path,json={'request_id':request_id,'question':'A different question?'}).status_code==409
+    status=client.get(path,params={'request_id':request_id}).json()
+    assert status['latest']['id']==summary['id']
+    assert status['questions']==[result]
+    assert status['request']['analysis']==result and status['quota']['daily_used']==2
+    assert len(calls)==2
+    with app.state.sessions.begin() as db:
+        db.get(Incident,path.split('/')[3]).risk_score=51
+    stale=client.get(path,params={'request_id':request_id}).json()
+    assert stale['questions'][0]['outdated'] and stale['request']['analysis']['outdated']
+
+
+def test_question_validation_and_shared_quota(environment,monkeypatch):
+    _,client,_,_,_,path,calls=setup(environment,monkeypatch,ai_daily_limit=1)
+    for value in ('', '  ', 'x'*501, 'bad\x00question'):
+        assert client.post(path,json={'request_id':str(uuid4()),'question':value}).status_code==422
+    assert not calls
+    assert client.post(path,json={'request_id':str(uuid4()),'question':'What happened?'}).status_code==200
+    assert client.post(path,json={'request_id':str(uuid4())}).status_code==429
+    assert len(calls)==1
+
+
+def test_question_history_is_workspace_scoped_and_available_when_ai_disabled(environment,monkeypatch):
+    app,client,_,outsider,analyst,path,calls=setup(environment,monkeypatch)
+    request_id=str(uuid4())
+    result=client.post(path,json={'request_id':request_id,'question':'What happened?'}).json()['analysis']
+    app.state.settings=replace(app.state.settings,ai_enabled=False)
+    app.dependency_overrides[verified_user]=lambda:analyst
+    status=client.get(path,params={'request_id':request_id}).json()
+    assert status['questions'][0]['id']==result['id'] and status['request']['state']=='not_found'
+    assert status['latest'] is None
+    app.dependency_overrides[verified_user]=lambda:outsider
+    assert client.get(path).status_code==404
+    assert client.post(path,json={'request_id':str(uuid4()),'question':'What happened?'}).status_code==404
+    assert len(calls)==1
+
+
+def test_question_identities_are_not_persisted_in_ai_audits(environment,monkeypatch):
+    app,client,_,_,_,path,calls=setup(environment,monkeypatch)
+    with app.state.sessions() as db:
+        event=db.scalar(select(Event).where(Event.event_type=='LOGIN_FAILED'))
+        user,ip=event.username,event.source_ip
+    result=client.post(path,json={'request_id':str(uuid4()),'question':f'Why did {user} fail from {ip}?'}).json()
+    assert user not in result['analysis']['question'] and ip not in result['analysis']['question']
+    with app.state.sessions() as db:
+        saved=db.scalar(select(Audit).where(Audit.action==COMPLETED))
+        assert saved.details['context']['analyst_question']==calls[0]['analyst_question']
+        assert ip not in str(saved.details['context'])

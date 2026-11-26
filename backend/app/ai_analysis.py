@@ -6,11 +6,11 @@ from datetime import timedelta
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from .ai_grounding import answer_schema, build_context
-from .ai_provider import AIProviderError, call_openai, PROMPT_VERSION, REQUEST_INSTRUCTIONS
+from .ai_provider import AIProviderError, call_openai, PROMPT_VERSION, request_instructions
 from .memberships import lock_workspace
 from .models import Audit, Membership, now
 
@@ -26,12 +26,13 @@ SAFE_FAILURE_CODES=frozenset(('provider_configuration','provider_rate_limited','
 
 
 class AnalysisRequest(BaseModel):
-    model_config=ConfigDict(extra='forbid')
+    model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
     request_id: UUID
+    question: str | None = Field(default=None,min_length=3,max_length=500,pattern=r'^[^\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+$')
 
 
 def context_hash(context, model):
-    value=json.dumps({'context':context,'model':model,'instructions':REQUEST_INSTRUCTIONS,
+    value=json.dumps({'context':context,'model':model,'instructions':request_instructions(context),
         'prompt_version':PROMPT_VERSION,'schema':answer_schema(context)},sort_keys=True,separators=(',',':'))
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -68,10 +69,25 @@ def present(row, digest):
         'context_limitations':context['limitations'],
         'omitted_linked_events':context['omitted_linked_events'],
         'omitted_related_events':context['omitted_related_events'],
-        'knowledge_version':context['knowledge_version'],'usage':data.get('usage',{})}
+        'knowledge_version':context['knowledge_version'],'usage':data.get('usage',{}),
+        'question':context.get('analyst_question')}
 
 
-def request_status(session, identity, incident_id, request_id, digest):
+def summary_only():
+    return Audit.details['context']['analyst_question'].as_string().is_(None)
+
+
+def current_digest(row, context, model):
+    if context is None:
+        return None
+    current=dict(context)
+    question=row.details['context'].get('analyst_question')
+    if question is not None:
+        current['analyst_question']=question
+    return context_hash(current,model)
+
+
+def request_status(session, identity, incident_id, request_id, digest, context=None, model=None):
     """Read a specific actor's receipt without reserving quota or invoking AI."""
     query=scoped(identity,incident_id)
     receipt=session.scalar(query.where(Audit.action.in_((REQUESTED,CACHE_HIT)),
@@ -84,6 +100,8 @@ def request_status(session, identity, incident_id, request_id, digest):
         complete=session.scalar(query.where(Audit.action==COMPLETED,
             Audit.details['request_record_id'].as_string()==receipt.id))
     if complete:
+        if model is not None:
+            digest=current_digest(complete,context,model)
         return {'state':'completed','analysis':present(complete,digest)}
     failed=session.scalar(query.where(Audit.action==FAILED,
         Audit.details['request_record_id'].as_string()==receipt.id))
@@ -153,17 +171,22 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
                identity=Depends(member), session=Depends(session_dependency)):
         authorized_incident(session,identity,incident_id)
         settings=request.app.state.settings
+        context=None
         try:
             context=build_context(load_detail(incident_id,identity,session))
             digest=context_hash(context,settings.ai_model)
         except ValueError:
             digest=None
-        latest=session.scalar(scoped(identity,incident_id).where(Audit.action==COMPLETED)
+        latest=session.scalar(scoped(identity,incident_id).where(Audit.action==COMPLETED,summary_only())
             .order_by(Audit.created_at.desc(),Audit.id.desc()).limit(1))
+        questions=list(session.scalars(scoped(identity,incident_id).where(Audit.action==COMPLETED,
+            Audit.details['context']['analyst_question'].as_string().is_not(None))
+            .order_by(Audit.created_at.desc(),Audit.id.desc()).limit(20)))
         return {'enabled':settings.ai_enabled and bool(settings.openai_api_key),
                 'provider':'OpenAI','model':settings.ai_model,'has_evidence':digest is not None,
                 'quota':quota(session,identity,settings),'latest':present(latest,digest) if latest else None,
-                'request':request_status(session,identity,incident_id,request_id,digest) if request_id else None}
+                'questions':[present(row,current_digest(row,context,settings.ai_model)) for row in questions],
+                'request':request_status(session,identity,incident_id,request_id,digest,context,settings.ai_model) if request_id else None}
 
     @api.post('/api/incidents/{incident_id}/ai-analysis')
     def analyze(incident_id: str, payload: AnalysisRequest, request: Request,
@@ -173,7 +196,7 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
         if not settings.ai_enabled or not settings.openai_api_key:
             raise HTTPException(503,'AI is not enabled. The project owner must configure the server-side provider first.')
         try:
-            context=build_context(load_detail(incident_id,identity,session))
+            context=build_context(load_detail(incident_id,identity,session),payload.question)
         except ValueError:
             raise HTTPException(409,'Selected incident evidence is unavailable or cannot be safely prepared for AI.') from None
         reservation,cached=reserve(session,identity,incident_id,payload,context,settings)

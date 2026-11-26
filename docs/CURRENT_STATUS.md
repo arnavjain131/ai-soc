@@ -1,6 +1,12 @@
 # Current checkpoint
 
-Updated 25 November 2026. Keep credentials in ignored local configuration.
+Updated 26 November 2026. Keep credentials in ignored local configuration.
+
+## Current: incident investigation questions (local release)
+
+API 0.11.0 adds explicitly submitted incident questions, cited structured answers and the latest 20 saved question answers. Questions use the existing workspace quota and request recovery. Their cache fingerprints are separate from summaries, and reports retain the main summary. Known identities from selected evidence are aliased in questions; arbitrary prose may still identify people or contain secrets, which the form warns against. No new schema, keys, environment changes or collector changes. See `docs/AI_INVESTIGATION.md`.
+
+Local backend validation: 177 tests passed, eight optional PostgreSQL tests skipped. Frontend: 35 tests passed and production build succeeded (existing bundle-size warning). No paid model call or hosted data change was made during implementation. Browser interaction verification is pending because both in-app and local Chrome attempts to reach the localhost synthetic preview timed out; no firewall or security settings were changed. Backend-first deployment is in progress.
 
 ## Current: incident reporting and download
 

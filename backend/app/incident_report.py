@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from sqlalchemy import func,or_,select
 from sqlalchemy.orm import Session
 
-from .ai_analysis import COMPLETED,context_hash,present
+from .ai_analysis import COMPLETED,context_hash,present,summary_only
 from .ai_grounding import build_context
 from .incident_assignment import assignment_summaries
 from .incident_journal import HISTORY_ACTIONS,NOTE_ACTION,audit_json,note_json
@@ -98,7 +98,7 @@ def read_report(session,identity,incident_id,settings,include_ai):
         'alerts':[{'id':a.id,'rule_key':a.rule_key,'explanation':a.explanation} for a in alerts]}
     saved=None
     if include_ai:
-        latest=session.scalar(audit.where(Audit.action==COMPLETED).order_by(Audit.created_at.desc(),Audit.id.desc()).limit(1))
+        latest=session.scalar(audit.where(Audit.action==COMPLETED,summary_only()).order_by(Audit.created_at.desc(),Audit.id.desc()).limit(1))
         if latest:
             try:digest=context_hash(build_context(detail),settings.ai_model)
             except ValueError:digest=None
