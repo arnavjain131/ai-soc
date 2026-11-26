@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
-import { aiFailureMessage, recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
+import { aiFailureMessage, mergeAIResult, recoverAIRequest, type AIRequestReceipt } from './aiRequestRecovery'
 import './incidentAI.css'
 
 type Analysis = {
   id:string; generated_at:string; model:string; outdated:boolean; knowledge_version:string
+  question?:string|null
   answer:{ summary:string; observations:{text:string;event_ids:string[]}[]; interpretation:string;
     investigation_steps:{text:string;reference_ids:string[]}[]; limitations:string[] }
   references:{id:string;title:string;url:string|null}[]; context_limitations:string[]
@@ -12,12 +13,15 @@ type Analysis = {
 }
 type State = {enabled:boolean;has_evidence:boolean;provider:string;model:string;
   quota:{daily_used:number;daily_limit:number;monthly_used:number;monthly_limit:number};latest:Analysis|null;
+  questions?:Analysis[];
   request?:AIRequestReceipt<Analysis>|null}
 
 export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventIds:string[] }) {
   const [state,setState]=useState<State|null>(null), [loading,setLoading]=useState(true), [busy,setBusy]=useState(false)
   const [error,setError]=useState(''), [notice,setNotice]=useState(''), [knownFailure,setKnownFailure]=useState(false)
   const [revision,setRevision]=useState(0)
+  const [question,setQuestion]=useState(''), [selectedQuestion,setSelectedQuestion]=useState<Analysis|null>(null)
+  const pendingQuestion=useRef<string|null>(null)
   const pending=useRef<string|null>(null), submitting=useRef(false), current=useRef(0)
   const path=`/api/incidents/${incidentId}/ai-analysis`
   function acceptSnapshot(result:State) {
@@ -25,7 +29,10 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       pending.current=null
       setError('');setKnownFailure(false)
       setNotice('Saved AI analysis recovered automatically. No additional model call was made.')
-      setState({...result,latest:result.request.analysis})
+      if(result.request.analysis.question) {
+        setSelectedQuestion(result.request.analysis)
+      } else setSelectedQuestion(null)
+      setState(mergeAIResult(result,result.request.analysis))
     } else {
       setState(result)
       if(result.request?.state==='failed') {
@@ -35,6 +42,10 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
     }
   }
   const evidenceVersion=eventIds.join(',')
+  useEffect(() => {
+    pending.current=null;pendingQuestion.current=null
+    setQuestion('');setSelectedQuestion(null);setKnownFailure(false)
+  },[incidentId])
   useEffect(() => {
     const request=++current.current
     setLoading(true);setError('')
@@ -47,18 +58,23 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
     return () => {current.current+=1}
   },[incidentId,revision,evidenceVersion])
 
-  async function analyze(newAttempt=false) {
+  async function analyze(newAttempt=false, requestedQuestion:string|null=null) {
     if(!state?.enabled || !state.has_evidence || submitting.current)return
     if(newAttempt)pending.current=null
+    if(!pending.current)pendingQuestion.current=requestedQuestion
     pending.current??=crypto.randomUUID()
     const requestId=pending.current
     submitting.current=true;setBusy(true);setError('');setNotice('');setKnownFailure(false)
     const request=current.current
     try {
-      const result=await api<{cached:boolean;analysis:Analysis}>(path,'POST',{request_id:requestId},65000)
+      const result=await api<{cached:boolean;analysis:Analysis}>(path,'POST',{
+        request_id:requestId,...(pendingQuestion.current ? {question:pendingQuestion.current} : {}),
+      },65000)
       if(current.current!==request)return
       pending.current=null
-      setState(previous => previous ? {...previous,latest:result.analysis}:previous)
+      if(result.analysis.question)setSelectedQuestion(result.analysis)
+      else setSelectedQuestion(null)
+      setState(previous => previous ? mergeAIResult(previous,result.analysis):previous)
       setNotice(result.cached ? 'Saved analysis reused. No new model call was made.' : 'AI analysis saved. Review its evidence and limitations before acting.')
       setRevision(value=>value+1)
     } catch(failure) {
@@ -86,10 +102,11 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
       }
       setError(failure instanceof Error ? failure.message : 'Could not complete AI analysis.')
       setKnownFailure(failure instanceof ApiError && [409,502].includes(failure.status))
+      if(failure instanceof ApiError && [400,403,404,413,422,429,503].includes(failure.status))pending.current=null
     } finally {submitting.current=false;setBusy(false)}
   }
 
-  const analysis=state?.latest, ids=new Set(eventIds)
+  const analysis=selectedQuestion ? state?.questions?.find(item=>item.id===selectedQuestion.id) ?? selectedQuestion : state?.latest, ids=new Set(eventIds)
   return <section className="panel incident-ai"><div className="panel-heading"><div><h2>AI incident analysis</h2><p>Evidence-grounded interpretation and suggested investigation. Analyst review required.</p></div></div>
     <div className="ai-content">
       {loading && <p role="status">Loading AI analysis status…</p>}
@@ -101,13 +118,25 @@ export function IncidentAI({ incidentId, eventIds }: { incidentId:string; eventI
         <p className="small muted">Generation attempts: {state.quota.daily_used}/{state.quota.daily_limit} today · {state.quota.monthly_used}/{state.quota.monthly_limit} this UTC month. Failed attempts count. Unchanged saved analyses are reused.</p>
         {!state.has_evidence && <p>No linked evidence is available for model interpretation.</p>}
         <div className="ai-actions"><button className="primary" disabled={busy || loading || (!knownFailure && (!state.enabled || !state.has_evidence))} onClick={()=>knownFailure ? setRevision(value=>value+1) : void analyze()}>{busy ? 'Analyzing evidence…' : knownFailure ? 'Check request status' : pending.current ? 'Check / retry same request' : 'Analyze incident'}</button>
-          {knownFailure && <button disabled={busy || loading || !state.enabled} onClick={()=>void analyze(true)}>Start a new attempt (uses quota)</button>}
+          {knownFailure && <button disabled={busy || loading || !state.enabled} onClick={()=>void analyze(true,pendingQuestion.current)}>Start a new attempt (uses quota)</button>}
           <button disabled={busy || loading} onClick={()=>setRevision(value=>value+1)}>Refresh saved analysis</button></div>
+        <form className="ai-question-form" onSubmit={event=>{event.preventDefault();void analyze(false,question.trim())}}>
+          <h3>Ask about this incident</h3>
+          <p className="small muted">Each question uses the same workspace AI quota. Answers use current incident evidence and approved references. Previous answers are not sent as conversation context.</p>
+          <div className="ai-actions">{['Why was this incident flagged?', 'Does the evidence show a successful login?', 'What should I investigate next?'].map(text=><button type="button" key={text} disabled={busy || !!pending.current} onClick={()=>setQuestion(text)}>{text}</button>)}</div>
+          <label htmlFor={`ai-question-${incidentId}`}>Investigation question</label>
+          <textarea id={`ai-question-${incidentId}`} value={question} minLength={3} maxLength={500} rows={3} required disabled={busy || !!pending.current} onChange={event=>setQuestion(event.target.value)} aria-describedby={`ai-question-privacy-${incidentId}`} />
+          <p className="small muted" id={`ai-question-privacy-${incidentId}`}>Your question is sent to OpenAI and saved for workspace members. Known account names and IPs from selected evidence are replaced with aliases; other text may remain identifiable. Use host/account aliases and never include passwords, tokens or other secrets.</p>
+          <button className="primary" type="submit" disabled={busy || loading || !!pending.current || !state.enabled || !state.has_evidence || question.trim().length<3}>Ask question (uses quota)</button>
+        </form>
+        {!!state.questions?.length && <div className="ai-question-history"><h3>Saved questions</h3><p className="small muted">Most recent 20 saved answers. Opening an answer makes no model call.</p><ul>{state.questions.map(item=><li key={item.id}><button type="button" onClick={()=>setSelectedQuestion(item)}>{item.question}</button> <time className="small muted" dateTime={item.generated_at}>{new Date(item.generated_at).toLocaleString()}</time></li>)}</ul></div>}
+        {selectedQuestion && <button type="button" onClick={()=>setSelectedQuestion(null)}>Show incident summary</button>}
       </>}
       {analysis && <div className="ai-result" aria-live="polite">
         <p className="small muted">AI generated · {analysis.model} · <time dateTime={analysis.generated_at} title={analysis.generated_at}>{new Date(analysis.generated_at).toLocaleString()}</time> · Knowledge {analysis.knowledge_version}</p>
+        {analysis.question && <><h3>Question</h3><p>{analysis.question}</p></>}
         {analysis.outdated && <p role="status">Evidence or model configuration has changed since this analysis. Review the current timeline before requesting a fresh analysis.</p>}
-        <h3>Summary</h3><p>{analysis.answer.summary}</p>
+        <h3>{analysis.question ? 'Answer' : 'Summary'}</h3><p>{analysis.answer.summary}</p>
         <h3>AI observations</h3>{analysis.answer.observations.map((observation,index)=><article key={index}><p>{observation.text}</p><div className="ai-citations">{observation.event_ids.map(id=>ids.has(id)
           ? <a key={id} href={`#evidence-${id}`} title={id}>Evidence {id.slice(0,8)}</a> : <span key={id} title={id}>Evidence {id.slice(0,8)} (outside current timeline view)</span>)}</div></article>)}
         <h3>Interpretation</h3><p>{analysis.answer.interpretation}</p>

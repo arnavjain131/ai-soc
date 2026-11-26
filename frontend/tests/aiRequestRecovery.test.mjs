@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { aiFailureMessage, recoverAIRequest } from '../src/aiRequestRecovery.ts'
+import { aiFailureMessage, mergeAIResult, recoverAIRequest } from '../src/aiRequestRecovery.ts'
+
+test('question results and lost-response recovery preserve the incident summary',async()=>{
+  const summary={id:'summary',question:null},question={id:'question',question:'What happened?'}
+  let view={latest:summary,questions:[],quota:2}
+  const outcome=await recoverAIRequest(async()=>({...view,request:{state:'completed',analysis:question}}),
+    snapshot=>{view=mergeAIResult(snapshot,snapshot.request.analysis)},()=>true,async()=>{})
+  assert.equal(outcome,'completed')
+  assert.equal(view.latest,summary)
+  assert.deepEqual(view.questions,[question])
+  assert.equal(view.quota,2)
+  assert.deepEqual(mergeAIResult(view,question).questions,[question])
+  const updated={id:'new-summary',question:null}
+  assert.equal(mergeAIResult(view,updated).latest,updated)
+  assert.deepEqual(mergeAIResult(view,updated).questions,[question])
+})
 
 test('lost generation response recovers the original saved result and quota with reads only', async () => {
   const snapshots = [

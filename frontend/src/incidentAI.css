@@ -1,1 +1,6 @@
 .incident-ai{margin-top:22px}.ai-content{padding:0 24px 24px}.ai-content p,.ai-content li{font-size:13px;line-height:1.8;overflow-wrap:anywhere}.ai-content p{margin:12px 0}.ai-content ul,.ai-content ol{padding-left:22px}.ai-content h3{font-size:15px;margin:24px 0 10px}.ai-content a{color:var(--mint)}.ai-actions,.ai-citations{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}.ai-citations{font-size:12px}.ai-result{border-top:1px solid var(--line);margin-top:24px;padding-top:12px}.timeline article[id]{scroll-margin-top:30px}
+.ai-question-form { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border, #29384a); }
+.ai-question-form label { display: block; margin: 1rem 0 .5rem; }
+.ai-question-form textarea { display: block; width: 100%; box-sizing: border-box; padding: .8rem; font: inherit; color: inherit; background: #0c1420; border: 1px solid #35475d; border-radius: .5rem; resize: vertical; }
+.ai-question-history li { margin-bottom: .75rem; }
+.ai-question-history button { text-align: left; overflow-wrap: anywhere; }

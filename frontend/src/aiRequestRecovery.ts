@@ -4,6 +4,12 @@ export type AIRequestReceipt<A> = {
   error_code?: string
 }
 
+export function mergeAIResult<A extends {id:string;question?:string|null}, S extends {latest:A|null;questions?:A[]}>(snapshot:S, result:A): S {
+  return result.question
+    ? {...snapshot,questions:[result,...(snapshot.questions ?? []).filter(item=>item.id!==result.id)].slice(0,20)}
+    : {...snapshot,latest:result}
+}
+
 export function aiFailureMessage(code?: string): string {
   const validation = ['invalid_provider_output', 'invalid_provider_json', 'invalid_answer_json',
     'invalid_answer_schema', 'invalid_evidence_citation', 'invalid_reference_citation',
