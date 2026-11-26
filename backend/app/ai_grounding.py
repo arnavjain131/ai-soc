@@ -134,6 +134,12 @@ class InvestigationStep(BaseModel):
     reference_ids: list[str] = Field(min_length=1,max_length=4)
 
 
+class HistoricalObservation(BaseModel):
+    model_config = ConfigDict(extra='forbid',str_strip_whitespace=True)
+    text: str = Field(min_length=1,max_length=1000)
+    case_ids: list[str] = Field(min_length=1,max_length=2)
+
+
 class GroundedAnswer(BaseModel):
     model_config = ConfigDict(extra='forbid',str_strip_whitespace=True)
     summary: str = Field(min_length=1,max_length=1200)
@@ -141,6 +147,7 @@ class GroundedAnswer(BaseModel):
     interpretation: str = Field(min_length=1,max_length=1600)
     investigation_steps: list[InvestigationStep] = Field(min_length=1,max_length=6)
     limitations: list[str] = Field(min_length=1,max_length=6)
+    historical_observations: list[HistoricalObservation] = Field(default_factory=list,max_length=3)
 
 
 class AnswerValidationError(ValueError):
@@ -157,6 +164,14 @@ def answer_schema(context):
         'type':'string','enum':sorted({item['id'] for item in context['evidence']})}
     schema['$defs']['InvestigationStep']['properties']['reference_ids']['items']={
         'type':'string','enum':sorted({item['id'] for item in context['references']})}
+    cases=sorted({item['id'] for item in context.get('historical_cases',[])})
+    # Strict provider schemas require every output field. The default only
+    # preserves compatibility with previously saved answers and local callers.
+    schema['required']=list(schema['properties'])
+    if cases:
+        schema['$defs']['HistoricalObservation']['properties']['case_ids']['items']={'type':'string','enum':cases}
+    else:
+        schema['properties']['historical_observations']['maxItems']=0
     return schema
 
 
@@ -175,4 +190,8 @@ def validate_answer(payload, context):
     for step in answer.investigation_steps:
         if not set(step.reference_ids) <= references:
             raise AnswerValidationError('invalid_reference_citation','Model cited an unavailable investigation reference')
+    cases={item['id'] for item in context.get('historical_cases',[])}
+    for observation in answer.historical_observations:
+        if not set(observation.case_ids)<=cases:
+            raise AnswerValidationError('invalid_case_citation','Model cited a case outside the authorized history context')
     return answer

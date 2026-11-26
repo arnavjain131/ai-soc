@@ -26,7 +26,7 @@ from .incident_report import install_report_routes
 
 
 NETWORK_TYPES = ('NETWORK_FLOW', 'SURICATA_ALERT')
-API_VERSION = '0.12.0'
+API_VERSION = '0.13.0'
 
 
 def token_hash(token):

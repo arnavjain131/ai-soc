@@ -10,8 +10,7 @@ from fastapi.responses import Response
 from sqlalchemy import func,or_,select
 from sqlalchemy.orm import Session
 
-from .ai_analysis import COMPLETED,context_hash,present,summary_only
-from .ai_grounding import build_context
+from .ai_analysis import COMPLETED,context_hash,present,summary_only,prepare_context
 from .incident_assignment import assignment_summaries
 from .incident_journal import HISTORY_ACTIONS,NOTE_ACTION,audit_json,note_json
 from .models import Alert,AlertEvent,Audit,Event,Incident,Membership,Source,Workspace,now
@@ -100,7 +99,7 @@ def read_report(session,identity,incident_id,settings,include_ai):
     if include_ai:
         latest=session.scalar(audit.where(Audit.action==COMPLETED,summary_only()).order_by(Audit.created_at.desc(),Audit.id.desc()).limit(1))
         if latest:
-            try:digest=context_hash(build_context(detail),settings.ai_model)
+            try:digest=context_hash(prepare_context(session,identity,detail),settings.ai_model)
             except ValueError:digest=None
             saved=present(latest,digest)
     return {'report_version':1,'report_id':str(uuid4()),'generated_at':stamp(now()),'prepared_for_user_id':identity.user_id,
@@ -154,7 +153,14 @@ def html_report(report):
         for observation in answer['observations']:
             links=[('<a href="#event-'+text(i)+'">'+text(i)+'</a>') if i in known else text(i)+' (not in current report evidence)' for i in observation['event_ids']]
             ai_body+='<article><p>'+text(observation['text'])+'</p><p class="muted">Evidence: '+', '.join(links)+'</p></article>'
-        ai_body+='<h3>Interpretation</h3><p>'+text(answer['interpretation'])+'</p><h3>Suggested investigation</h3><ol>'
+        ai_body+='<h3>Interpretation</h3><p>'+text(answer['interpretation'])+'</p>'
+        if ai.get('historical_cases'):
+            ai_body+='<h3>Earlier case metadata supplied to AI</h3><p>Shared detection rules are not proof of a shared attacker, host or cause. These are saved metadata, not earlier-case evidence or verified outcomes.</p>'
+            ai_body+=table(['Case ID','Created (UTC)','Saved status','Severity','Risk','Shared rules'],[[
+                item['id'],item['created_at'],item['status'],item['severity'],item['risk_score'],', '.join(item['shared_rules'])] for item in ai['historical_cases']])
+        for observation in answer.get('historical_observations',[]):
+            ai_body+='<article><p>'+text(observation['text'])+'</p><p>Earlier case references: '+text(', '.join(observation['case_ids']))+'</p></article>'
+        ai_body+='<h3>Suggested investigation</h3><ol>'
         ai_body+=''.join('<li>'+text(s['text'])+'<p class="muted">References: '+text(', '.join(s['reference_ids']))+'</p></li>' for s in answer['investigation_steps'])+'</ol>'
         ai_body+=table(['Reference ID','Title','URL'],[[r['id'],r['title'],r.get('url')] for r in ai['references']])
         retrieved=[r for r in ai['references'] if r.get('document_id')]

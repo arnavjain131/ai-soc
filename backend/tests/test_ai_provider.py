@@ -118,6 +118,7 @@ def test_each_detection_uses_only_its_own_citation_choices(monkeypatch,rule,even
 
 @pytest.mark.parametrize('kind,code',[
     ('evidence','invalid_evidence_citation'),('reference','invalid_reference_citation'),
+    ('history','invalid_case_citation'),
     ('structure','invalid_answer_schema'),('json','invalid_answer_json'),
     ('envelope','invalid_provider_json'),
 ])
@@ -127,6 +128,7 @@ def test_failure_categories_are_precise_without_exposing_rejected_text(monkeypat
     output=answer(context)
     if kind=='evidence':output['observations'][0]['event_ids']=['private-invalid-citation']
     if kind=='reference':output['investigation_steps'][0]['reference_ids']=['private-invalid-reference']
+    if kind=='history':output['historical_observations']=[{'text':'Untrusted historical claim','case_ids':['private-invalid-case']}]
     if kind=='structure':output['summary']=''
     data['output'][0]['content'][0]['text']='private-invalid-json' if kind=='json' else json.dumps(output)
     mocked_client(monkeypatch,lambda _:httpx.Response(200,content=b'private-envelope') if kind=='envelope' else httpx.Response(200,json=data))

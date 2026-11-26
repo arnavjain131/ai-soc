@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from .ai_grounding import answer_schema, build_context
 from .ai_knowledge import ground_references
+from .ai_history import similar_incidents,historical_context,history_info
 from .ai_provider import AIProviderError, call_openai, PROMPT_VERSION, request_instructions
 from .memberships import lock_workspace
 from .models import Audit, Membership, now
@@ -23,7 +24,7 @@ CACHE_HIT='incident.ai_cache_hit'
 SAFE_FAILURE_CODES=frozenset(('provider_configuration','provider_rate_limited','provider_unavailable',
     'provider_response_limit','provider_incomplete','unexpected_provider_output','provider_refused',
     'invalid_provider_output','invalid_provider_json','invalid_answer_json','invalid_answer_schema',
-    'invalid_evidence_citation','invalid_reference_citation','oversized_answer'))
+    'invalid_evidence_citation','invalid_reference_citation','invalid_case_citation','oversized_answer'))
 
 
 class AnalysisRequest(BaseModel):
@@ -36,6 +37,17 @@ def context_hash(context, model):
     value=json.dumps({'context':context,'model':model,'instructions':request_instructions(context),
         'prompt_version':PROMPT_VERSION,'schema':answer_schema(context)},sort_keys=True,separators=(',',':'))
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def prepare_context(session,identity,detail,question=None,cases=None):
+    context=build_context(detail,question)
+    if cases is None:
+        cases=similar_incidents(session,identity.workspace_id,detail['id'],limit=2)
+    context['historical_cases']=historical_context(cases)
+    context['history_retrieval']=history_info()
+    if len(json.dumps(context).encode())>65536:
+        raise ValueError('Incident and history context exceeds 64 KiB')
+    return context
 
 
 def actor_still_authorized(session, identity):
@@ -71,7 +83,8 @@ def present(row, digest):
         'omitted_linked_events':context['omitted_linked_events'],
         'omitted_related_events':context['omitted_related_events'],
         'knowledge_version':context['knowledge_version'],'usage':data.get('usage',{}),
-        'question':context.get('analyst_question')}
+        'question':context.get('analyst_question'),
+        'historical_cases':context.get('historical_cases',[])}
 
 
 def summary_only():
@@ -172,9 +185,10 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
                identity=Depends(member), session=Depends(session_dependency)):
         authorized_incident(session,identity,incident_id)
         settings=request.app.state.settings
+        cases=similar_incidents(session,identity.workspace_id,incident_id)
         context=None
         try:
-            context=build_context(load_detail(incident_id,identity,session))
+            context=prepare_context(session,identity,load_detail(incident_id,identity,session),cases=cases)
             digest=context_hash(context,settings.ai_model)
         except ValueError:
             digest=None
@@ -187,6 +201,7 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
                 'provider':'OpenAI','model':settings.ai_model,'has_evidence':digest is not None,
                 'quota':quota(session,identity,settings),'latest':present(latest,digest) if latest else None,
                 'knowledge':context['retrieval'] if context else None,
+                'similar_incidents':cases,'history_retrieval':history_info(),
                 'questions':[present(row,current_digest(row,context,settings.ai_model)) for row in questions],
                 'request':request_status(session,identity,incident_id,request_id,digest,context,settings.ai_model) if request_id else None}
 
@@ -198,7 +213,7 @@ def install_ai_routes(api, member, session_dependency, authorized_incident, load
         if not settings.ai_enabled or not settings.openai_api_key:
             raise HTTPException(503,'AI is not enabled. The project owner must configure the server-side provider first.')
         try:
-            context=build_context(load_detail(incident_id,identity,session),payload.question)
+            context=prepare_context(session,identity,load_detail(incident_id,identity,session),payload.question)
         except ValueError:
             raise HTTPException(409,'Selected incident evidence is unavailable or cannot be safely prepared for AI.') from None
         reservation,cached=reserve(session,identity,incident_id,payload,context,settings)

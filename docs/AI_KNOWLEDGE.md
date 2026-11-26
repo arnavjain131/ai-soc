@@ -24,7 +24,7 @@ The library is loaded only from one repository-owned path. No upload, arbitrary 
 
 The new corpus and prompt version change context fingerprints. Earlier answers remain intact, readable and marked outdated. A status refresh or opening a saved answer does not regenerate it. Each explicit new generation still shares the existing daily/monthly allowance; failures count as before. Identical questions with unchanged evidence and knowledge reuse saved results. Stored-question freshness is calculated by rerunning retrieval for that exact stored question, rather than comparing it against the summary's reference selection.
 
-No database migration, vector extension, embedding provider, extra key, quota change or collector configuration change is required. Historical-incident retrieval and a trained detector remain separate milestones. The assistant must acknowledge missing evidence and human approval is required for any response action.
+No database migration, vector extension, embedding provider, extra key, quota change or collector configuration change is required. API 0.13.0 adds separate workspace-scoped historical metadata retrieval; see `AI_HISTORY.md`. A trained detector remains a separate milestone. The assistant must acknowledge missing evidence and human approval is required for any response action.
 
 ## Updating knowledge
 

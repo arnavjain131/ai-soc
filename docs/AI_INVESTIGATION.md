@@ -8,7 +8,7 @@ Open a private incident and find **AI incident analysis → Ask about this incid
 
 The answer appears with linked evidence, approved investigation references and limitations. **Saved questions** shows the most recent 20 completed answers. Opening saved answers and refreshing status make no model call. The main summary remains separate, and incident reports continue to include only the main summary.
 
-Each question is independent and uses the current authorized incident context. Earlier conversation turns are not sent. Historical-case retrieval, uploaded-document retrieval and live external searches are not implemented by this feature. Answers cannot execute actions or change incident disposition.
+Each question is independent and uses the current authorized incident context. Earlier conversation turns are not sent. API 0.13.0 additionally retrieves up to two earlier-case metadata summaries from the same workspace; see `AI_HISTORY.md` for matching, privacy and citation limits. Uploaded-document retrieval and live external searches are not implemented. Answers cannot execute actions or change incident disposition.
 
 ## Data and access
 
